@@ -112,9 +112,9 @@ char motionindic[] = "n";
 //bool ch[NCHANNELS]={true,true,true}; // This sets what channels should be adjusted for background bounds
 extern struct capture_data capture_info;
 
-struct timeval timA;
-struct timeval timB;
-struct timeval timC;
+struct timeval timevalA;
+struct timeval timevalB;
+struct timeval timevalC;
 
 //accelerator variables
 int fd_devmem;
@@ -251,6 +251,11 @@ char get_input(){
 	//The Optical Flow window is created to visualize the output of the optical flow algorithm
 	//The size of this winodw is automatically adjusted in order to match the previously determined window width and height
 
+	if(DEBUG_MODE){
+		printf("------------start of get input-------------\n");
+		gettimeofday(&timevalA, NULL);
+	}
+
 #ifndef	USE_V4L_READS
 	rawImage = cvQueryFrame(capture);
 #else
@@ -260,8 +265,18 @@ char get_input(){
 	rawImage = v4lQueryFrame();
 #endif
 
+	if(DEBUG_MODE){
+		gettimeofday(&timevalB, NULL);
+		timersub(&timevalB, &timevalA, &timevalC);
+		printf("capture frame time[us] = %d\n", timevalC.tv_sec * 1000000 + timevalC.tv_usec);
+	}
+
 	if(NULL == rawImage) 
 		return INPUT_NONE;	//error condition?
+
+	if(DEBUG_MODE){
+		gettimeofday(&timevalA, NULL);
+	}
 
 #ifdef USE_V4L_READS
 	cvCvtColor(rawImage, yuvImage, CV_RGB2YCrCb);//YUV For codebook method. V4L query returns RGB format
@@ -269,50 +284,56 @@ char get_input(){
 	cvCvtColor(rawImage, yuvImage, CV_BGR2YCrCb);//YUV For codebook method
 #endif
 
+	if(DEBUG_MODE){
+		gettimeofday(&timevalB, NULL);
+		timersub(&timevalB, &timevalA, &timevalC);
+		printf("cvt RGB2YUV time[us] = %d\n", timevalC.tv_sec * 1000000 + timevalC.tv_usec);
+	}
+
 	if(NULL == yuvImage)
 		return INPUT_NONE;
 
 	if(DEBUG_MODE){
-		gettimeofday(&timA, NULL);
+		gettimeofday(&timevalA, NULL);
 	}
 
 	// Find foreground by codebook method
 	cvBGCodeBookDiff(model, yuvImage, ImaskCodeBookCC);
 
 	if(DEBUG_MODE){
-		gettimeofday(&timB, NULL);
-		timersub(&timB, &timA, &timC);
-		printf("cvBGCodeBookDiff time[us] = %d\n", timC.tv_sec * 1000000 + timC.tv_usec);
+		gettimeofday(&timevalB, NULL);
+		timersub(&timevalB, &timevalA, &timevalC);
+		printf("cvBGCodeBookDiff time[us] = %d\n", timevalC.tv_sec * 1000000 + timevalC.tv_usec);
 	}
 
 	if(NULL == ImaskCodeBookCC)
 		return INPUT_NONE;
 
 	if(DEBUG_MODE){
-		gettimeofday(&timA, NULL);
+		gettimeofday(&timevalA, NULL);
 	}
 
 	cvSegmentFGMask(ImaskCodeBookCC);
 
 	if(DEBUG_MODE){
-		gettimeofday(&timB, NULL);
-		timersub(&timB, &timA, &timC);
-		printf("cvSegmentFGMask time[us] = %d\n", timC.tv_sec * 1000000 + timC.tv_usec);
+		gettimeofday(&timevalB, NULL);
+		timersub(&timevalB, &timevalA, &timevalC);
+		printf("cvSegmentFGMask time[us] = %d\n", timevalC.tv_sec * 1000000 + timevalC.tv_usec);
 	}
 
 	if(NULL == ImaskCodeBookCC)
 		return INPUT_NONE;
 
 	if(DEBUG_MODE){
-		gettimeofday(&timA, NULL);
+		gettimeofday(&timevalA, NULL);
 	}
 
 	cvCopy(rawImage, contour_frame);
 
 	if(DEBUG_MODE){
-		gettimeofday(&timB, NULL);
-		timersub(&timB, &timA, &timC);
-		printf("cvCopy time[us] = %d\n", timC.tv_sec * 1000000 + timC.tv_usec);
+		gettimeofday(&timevalB, NULL);
+		timersub(&timevalB, &timevalA, &timevalC);
+		printf("cvCopy time[us] = %d\n", timevalC.tv_sec * 1000000 + timevalC.tv_usec);
 	}
 
 	if(use_accelerators & USE_ACCEL_AREA){
@@ -326,9 +347,9 @@ char get_input(){
 	}
 
 	if(DEBUG_MODE){
-		gettimeofday(&timB, NULL);
-		timersub(&timB, &timA, &timC);
-		printf("detect() time[us] = %d\n", timC.tv_sec * 1000000 + timC.tv_usec);
+		gettimeofday(&timevalB, NULL);
+		timersub(&timevalB, &timevalA, &timevalC);
+		printf("detect() time[us] = %d\n", timevalC.tv_sec * 1000000 + timevalC.tv_usec);
 	}
 
 	//Approximate the number of fingers in the image to be equivalent to the number of defects in the contour of the frame
@@ -349,7 +370,17 @@ char get_input(){
 		}
 	}
 
+	if(DEBUG_MODE){
+		gettimeofday(&timevalA, NULL);
+	}
+
 	cvCvtColor(rawImage,im_gray,CV_RGB2GRAY);
+
+	if(DEBUG_MODE){
+		gettimeofday(&timevalB, NULL);
+		timersub(&timevalB, &timevalA, &timevalC);
+		printf("cvt RGB2GRAY time[us] = %d\n", timevalC.tv_sec * 1000000 + timevalC.tv_usec);
+	}
 
 	cvCopy(im_gray, frame1);
 	cvCopy(im_gray, frame1_1C);
