@@ -32,6 +32,7 @@
 extern int DEBUG_MODE;
 extern int DRAWING_ON;
 extern int use_accelerators;
+extern int USE_V4L_CAPTURE;
 
 IplImage* rawImage = NULL;
 IplImage* yuvImage = NULL;
@@ -111,6 +112,7 @@ char motionindic[] = "n";
 //const int NCHANNELS = 3;
 //bool ch[NCHANNELS]={true,true,true}; // This sets what channels should be adjusted for background bounds
 extern struct capture_data capture_info;
+extern CvCapture* capture;
 
 struct timeval timevalA;
 struct timeval timevalB;
@@ -210,20 +212,20 @@ void init_frame_processing(int calib_frames){
 			printf("generating BG model, %d frames to go.\n", nframesToLearnBG - nframes);
 		}
 
-#ifndef	USE_V4L_READS
-		rawImage = cvQueryFrame(capture);
-#else
+		if(!USE_V4L_CAPTURE){
+			rawImage = cvQueryFrame(capture);
+		}else{
 #ifndef USE_MULTI_THREAD_CAPTURE
-		capture_frame((void*)NULL); //if not multi-threaded must capture an image b4 query
+			capture_frame((void*)NULL); //if not multi-threaded must capture an image b4 query
 #endif
-		rawImage = v4lQueryFrame();
-#endif
+			rawImage = v4lQueryFrame();
+		}
 
-#ifdef USE_V4L_READS
-		cvCvtColor(rawImage, yuvImage, CV_RGB2YCrCb);//YUV For codebook method. V4L query returns RGB format
-#else
-		cvCvtColor(rawImage, yuvImage, CV_BGR2YCrCb);//YUV For codebook method
-#endif
+		if(!USE_V4L_CAPTURE)
+			cvCvtColor(rawImage, yuvImage, CV_BGR2YCrCb);//YUV For codebook method
+		else
+			cvCvtColor(rawImage, yuvImage, CV_RGB2YCrCb);//YUV For codebook method. V4L query returns RGB format
+
 		if(nframes < nframesToLearnBG){
 			cvBGCodeBookUpdate(model, yuvImage);
 		}else if(nframes == nframesToLearnBG)
@@ -256,14 +258,14 @@ char get_input(){
 		gettimeofday(&timevalA, NULL);
 	}
 
-#ifndef	USE_V4L_READS
-	rawImage = cvQueryFrame(capture);
-#else
+	if(!USE_V4L_CAPTURE)
+		rawImage = cvQueryFrame(capture);
+	else{
 #ifndef USE_MULTI_THREAD_CAPTURE
-	capture_frame(); //if not multi-threaded must capture an image b4 query
+		capture_frame((void*)NULL); //if not multi-threaded must capture an image b4 query
 #endif
-	rawImage = v4lQueryFrame();
-#endif
+		rawImage = v4lQueryFrame();
+	}
 
 	if(DEBUG_MODE){
 		gettimeofday(&timevalB, NULL);
@@ -278,11 +280,10 @@ char get_input(){
 		gettimeofday(&timevalA, NULL);
 	}
 
-#ifdef USE_V4L_READS
-	cvCvtColor(rawImage, yuvImage, CV_RGB2YCrCb);//YUV For codebook method. V4L query returns RGB format
-#else
-	cvCvtColor(rawImage, yuvImage, CV_BGR2YCrCb);//YUV For codebook method
-#endif
+	if(!USE_V4L_CAPTURE)
+		cvCvtColor(rawImage, yuvImage, CV_BGR2YCrCb);//YUV For codebook method
+	else
+		cvCvtColor(rawImage, yuvImage, CV_RGB2YCrCb);//YUV For codebook method. V4L query returns RGB format
 
 	if(DEBUG_MODE){
 		gettimeofday(&timevalB, NULL);
@@ -391,7 +392,7 @@ char get_input(){
 		return INPUT_NONE;
 
 	number_of_features = MAX_FEATURES;
-	
+
 	if(DEBUG_MODE){
 		gettimeofday(&timevalA, NULL);
 	}

@@ -30,6 +30,7 @@
 int DEBUG_MODE = 0;
 int USE_KEYBOARD = 0;
 int DRAWING_ON = 0;
+int USE_V4L_CAPTURE = 1;
 
 //global variables
 int board[BOARD_HEIGHT][BOARD_WIDTH];
@@ -55,9 +56,7 @@ struct timeval timA;
 struct timeval timB;
 struct timeval timC;
 
-#ifndef USE_V4L_READS
 CvCapture* capture = NULL;
-#endif
 
 void init_curses_mode(){
 	//begin curses mode
@@ -99,6 +98,7 @@ void usage(char* cmd){
 	printf("Change how game statistics are initialized.\n");
 	printf("\t-l <LEVEL>\tSet the starting level of the game.\n");
 	printf("\n<MISC>\n");
+	printf("\t-N\tUse standard opencv capture to acquire frames. Disables lower-level V4L capture.\n");
 	printf("\t-G\tEnable High GUI displays.\n");
 	printf("\t-K\tDisable image processing for input and use i,j,k,l,<SPACE> to control game.\n");
 	printf("\t-D\tDebug mode. Display timing information and other data.");
@@ -146,6 +146,10 @@ int main(int argc, char** argv){
 				calib_frames = atoi(optarg);
 				break;
 
+			case NO_V4L_CAPTURE:
+				USE_V4L_CAPTURE = 0;
+				break;
+
 			case SET_DEBUG_MODE:
 				printf("\nGame has been disabled for debug mode.\n\n");
 				DEBUG_MODE = 1;
@@ -177,28 +181,29 @@ int main(int argc, char** argv){
 	//Allocate and initialize the CvCapture Structure
 	//A parameter of -1 indicates uses the first available camera
 	//In this case, we only expect one camera to be attached so a parameter of -1 is acceptable
-#ifndef	USE_V4L_READS
-	capture = cvCaptureFromCAM(-1);
-	cvQueryFrame(capture);
-	//Use the queried frame in order to determine an appropriate size for newly created windows
-	capture_info.dim.height = (int) cvGetCaptureProperty(capture, CV_CAP_PROP_FRAME_HEIGHT);
-	capture_info.dim.width = (int) cvGetCaptureProperty(capture, CV_CAP_PROP_FRAME_WIDTH);
-#endif
+	if(!USE_V4L_CAPTURE){
+		capture = cvCaptureFromCAM(-1);
+		cvQueryFrame(capture);
+		//Use the queried frame in order to determine an appropriate size for newly created windows
+		capture_info.dim.height = (int) cvGetCaptureProperty(capture, CV_CAP_PROP_FRAME_HEIGHT);
+		capture_info.dim.width = (int) cvGetCaptureProperty(capture, CV_CAP_PROP_FRAME_WIDTH);
+	}
 
 	//do not initialize capture if it is not being used.
 	if(!USE_KEYBOARD){
-#ifdef USE_V4L_READS
-		if(init_v4l2()){
-			printf("Failed to initialize V4l.\n");
-			return -1;
-		}
+
+		if(USE_V4L_CAPTURE){
+			if(init_v4l2()){
+				printf("Failed to initialize V4l.\n");
+				return -1;
+			}
 #ifdef USE_MULTI_THREAD_CAPTURE //multi-thread capture relies on V4L reads
-		if(pthread_create(&capture_thread, NULL, capture_frame, NULL)){
-			perror("main: pthread_create failed");
-			return -1;
+			if(pthread_create(&capture_thread, NULL, capture_frame, NULL)){
+				perror("main: pthread_create failed");
+				return -1;
+			}
+#endif
 		}
-#endif
-#endif
 	}
 
 	//disable curses display in debug mode
@@ -234,6 +239,9 @@ int main(int argc, char** argv){
 			temp = timC.tv_usec + timC.tv_sec * 1000000;
 			stats.data_a = temp;	//total microseconds
 			stats.data_b = 1000000/temp;	//fps
+
+			if(DEBUG_MODE)
+				printf("Total time[us] %d\n", temp);
 		}
 
 		//disable game behavior in debug mode to allow image processing functions
@@ -273,9 +281,10 @@ int main(int argc, char** argv){
 		}
 	}
 
-#ifndef USE_V4L_READS
-	cvReleaseCapture(&capture);
-#endif
+	if(!USE_V4L_CAPTURE){
+		cvReleaseCapture(&capture);
+	}
+
 	if(!DEBUG_MODE){
 		nodelay(win, false); //turn getch into blocking call to wait for input
 		endwin();	//end curses mode	
