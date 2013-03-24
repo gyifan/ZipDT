@@ -391,6 +391,11 @@ char get_input(){
 		return INPUT_NONE;
 
 	number_of_features = MAX_FEATURES;
+	
+	if(DEBUG_MODE){
+		gettimeofday(&timevalA, NULL);
+	}
+
 	cvGoodFeaturesToTrack(
 			frame1_1C,		//input 8U or 32F image
 			eig_image,		//PARAM IGNORED
@@ -404,6 +409,12 @@ char get_input(){
 			0,		//0 = dont use harris, 1 = use harris corner detector
 			0.04);	//parameter of harris corner detector (if its being used)
 
+	if(DEBUG_MODE){
+		gettimeofday(&timevalB, NULL);
+		timersub(&timevalB, &timevalA, &timevalC);
+		printf("cvGoodFeaturesToTrack time[us] = %d\n", timevalC.tv_sec * 1000000 + timevalC.tv_usec);
+	}
+
 	//Optical flow motherload
 	// frame1_1C: first frame with the known features.
 	// frame2_1C: second frame used to detect the features found in frame1
@@ -412,6 +423,10 @@ char get_input(){
 	// frame2_features: the locations of the features found in frame1, as found in the second frame.
 
 	if(frame2_1C != NULL){
+		if(DEBUG_MODE){
+			gettimeofday(&timevalA, NULL);
+		}
+
 		cvCalcOpticalFlowPyrLK(
 				frame1_1C, //previous image
 				frame2_1C, //current image
@@ -426,6 +441,12 @@ char get_input(){
 				optical_flow_feature_error, 
 				optical_flow_termination_criteria, 
 				0);
+
+		if(DEBUG_MODE){
+			gettimeofday(&timevalB, NULL);
+			timersub(&timevalB, &timevalA, &timevalC);
+			printf("cvCalcOpticalFlowPyrLK time[us] = %d\n", timevalC.tv_sec * 1000000 + timevalC.tv_usec);
+		}
 
 		sumDirection = 0;
 
