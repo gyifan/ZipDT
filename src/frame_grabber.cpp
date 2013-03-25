@@ -4,7 +4,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-#include <semaphore.h>
+#include <pthread.h>
 #include <sys/mman.h>
 #include <errno.h>
 #include <stdlib.h>
@@ -23,11 +23,9 @@ enum v4l2_buf_type type;
 char* yuyv_buffer;
 char* frame_buffer[BUFF_COUNT];
 
-sem_t frame_sem[BUFF_COUNT];
 pthread_mutex_t frame_mutex[BUFF_COUNT];
 
 int has_frame[BUFF_COUNT];
-int capture_pipe_fd[2];
 extern struct capture_data capture_info;
 
 struct buffer* buffers = NULL;
@@ -155,14 +153,9 @@ int init_v4l2(void){
 			return -1;
 		}
 
-	//initialize semaphores
+	//initialize mutexes
 	for(i = 0; i < BUFF_COUNT; i++)
-		if(sem_init(&frame_sem[i], 1, 1)){
-			perror("init_v4l2: sem_init failed");
-			return -1;
-		}
-
-//	for(i)
+		frame_mutex[i] = PTHREAD_MUTEX_INITIALIZER;
 
 	return 0;
 }
@@ -182,8 +175,16 @@ int v4l2_grab(void){
 
 int yuyv_2_rgb888(char* dst_ptr){
 	int i,j;
-	unsigned char y1,y2,u,v;
+	int temp0;
+	int temp1;
+	unsigned char y1,y2,u1,v1;
+	unsigned char y3,y4,u2,v2;
+	unsigned char y5,y6,u3,v3;
+	unsigned char y7,y8,u4,v4;
 	int r1,g1,b1,r2,g2,b2;
+	int r3,g3,b3,r4,g4,b4;
+	int r5,g5,b5,r6,g6,b6;
+	int r7,g7,b7,r8,g8,b8;
 	char* pointer;
 	int height = capture_info.dim.height;
 	int width = capture_info.dim.width;
@@ -191,57 +192,94 @@ int yuyv_2_rgb888(char* dst_ptr){
 	pointer = yuyv_buffer;
 
 	for(i=0;i<height;i++){
-		for(j=0;j<width/2;j++){
-			y1 = *( pointer + (i*width/2+j)*4);
-			u  = *( pointer + (i*width/2+j)*4 + 1);
-			y2 = *( pointer + (i*width/2+j)*4 + 2);
-			v  = *( pointer + (i*width/2+j)*4 + 3);
+		for(j=0;j<width/2;j+=4){
+			temp0 = (i*width/2+j)*4;
+			temp1 = (i*width/2+j)*6;
 
-			r1 = y1 + 1.042*(v-128);
-			g1 = y1 - 0.34414*(u-128) - 0.71414*(v-128);
-			b1 = y1 + 1.772*(u-128);
+			y1 = *(pointer + temp0);
+			u1 = *(pointer + temp0 + 1);
+			y2 = *(pointer + temp0 + 2);
+			v1 = *(pointer + temp0 + 3);
+			y3 = *(pointer + temp0 + 4);
+			u2 = *(pointer + temp0 + 5);
+			y4 = *(pointer + temp0 + 6);
+			v2 = *(pointer + temp0 + 7);
 
-			r2 = y2 + 1.042*(v-128);
-			g2 = y2 - 0.34414*(u-128) - 0.71414*(v-128);
-			b2 = y2 + 1.772*(u-128);
+			y5 = *(pointer + temp0 + 8);
+			u3 = *(pointer + temp0 + 9);
+			y6 = *(pointer + temp0 + 10);
+			v3 = *(pointer + temp0 + 11);
+			y7 = *(pointer + temp0 + 12);
+			u4 = *(pointer + temp0 + 13);
+			y8 = *(pointer + temp0 + 14);
+			v4 = *(pointer + temp0 + 15);
 
-			if(r1>255)
-				r1 = 255;
-			else if(r1<0)
-				r1 = 0;
+			r1 = y1 + 1.042 * (v1 - 128);
+			g1 = y1 - 0.34414 * (u1 - 128) - 0.71414 * (v1 - 128);
+			b1 = y1 + 1.772 * (u1 - 128);
+			r2 = y2 + 1.042 * (v1 - 128);
+			g2 = y2 - 0.34414 * (u1 - 128) - 0.71414 * (v1 - 128);
+			b2 = y2 + 1.772 * (u1 - 128);
+			r3 = y3 + 1.042 * (v2 - 128);
+			g3 = y3 - 0.34414 * (u2 - 128) - 0.71414 * (v2 - 128);
+			b3 = y3 + 1.772 * (u2 - 128);
+			r4 = y4 + 1.042 * (v2 - 128);
+			g4 = y4 - 0.34414 * (u2 - 128) - 0.71414 * (v2 - 128);
+			b4 = y4 + 1.772 * (u2 - 128);
 
-			if(b1>255)
-				b1 = 255;
-			else if(b1<0)
-				b1 = 0;
-
-			if(g1>255)
-				g1 = 255;
-			else if(g1<0)
-				g1 = 0;
-
-			if(r2>255)
-				r2 = 255;
-			else if(r2<0)
-				r2 = 0;
-
-			if(b2>255)
-				b2 = 255;
-			else if(b2<0)
-				b2 = 0;
-
-			if(g2>255)
-				g2 = 255;
-			else if(g2<0)
-				g2 = 0;
+			r5 = y5 + 1.042 * (v3 - 128);
+			g5 = y5 - 0.34414 * (u3 - 128) - 0.71414 * (v3 - 128);
+			b5 = y5 + 1.772 * (u3 - 128);
+			r6 = y6 + 1.042 * (v3 - 128);
+			g6 = y6 - 0.34414 * (u3 - 128) - 0.71414 * (v3 - 128);
+			b6 = y6 + 1.772 * (u3 - 128);
+			r7 = y7 + 1.042 * (v4 - 128);
+			g7 = y7 - 0.34414 * (u4 - 128) - 0.71414 * (v4 - 128);
+			b7 = y7 + 1.772 * (u4 - 128);
+			r8 = y8 + 1.042 * (v4 - 128);
+			g8 = y8 - 0.34414 * (u4 - 128) - 0.71414 * (v4 - 128);
+			b8 = y8 + 1.772 * (u4 - 128);
 			
-			*(dst_ptr + ((i)*width/2+j)*6    ) = (unsigned char)b1;
-			*(dst_ptr + ((i)*width/2+j)*6 + 1) = (unsigned char)g1;
-			*(dst_ptr + ((i)*width/2+j)*6 + 2) = (unsigned char)r1;
-			*(dst_ptr + ((i)*width/2+j)*6 + 3) = (unsigned char)b2;
-			*(dst_ptr + ((i)*width/2+j)*6 + 4) = (unsigned char)g2;
-			*(dst_ptr + ((i)*width/2+j)*6 + 5) = (unsigned char)r2;
+			//ensure that values are in an acceptable range
+			r1 &= 255; g1 &= 255; b1 &= 255;
+			r2 &= 255; g2 &= 255; b2 &= 255;
+			r3 &= 255; g3 &= 255; b3 &= 255;
+			r4 &= 255; g4 &= 255; b4 &= 255;
 
+			r5 &= 255; g5 &= 255; b5 &= 255;
+			r6 &= 255; g6 &= 255; b6 &= 255;
+			r7 &= 255; g7 &= 255; b7 &= 255;
+			r8 &= 255; g8 &= 255; b8 &= 255;
+
+			*(dst_ptr + temp1) = (unsigned char)b1;
+			*(dst_ptr + temp1 + 1) = (unsigned char)g1;
+			*(dst_ptr + temp1 + 2) = (unsigned char)r1;
+			*(dst_ptr + temp1 + 3) = (unsigned char)b2;
+			*(dst_ptr + temp1 + 4) = (unsigned char)g2;
+			*(dst_ptr + temp1 + 5) = (unsigned char)r2;
+			*(dst_ptr + temp1 + 6) = (unsigned char)b3;
+			*(dst_ptr + temp1 + 7) = (unsigned char)g3;
+			*(dst_ptr + temp1 + 8) = (unsigned char)r3;
+			*(dst_ptr + temp1 + 9) = (unsigned char)b4;
+			*(dst_ptr + temp1 + 10) = (unsigned char)g4;
+			*(dst_ptr + temp1 + 11) = (unsigned char)r4;
+
+			*(dst_ptr + temp1 + 12) = (unsigned char)b5;
+			*(dst_ptr + temp1 + 13) = (unsigned char)g5;
+			*(dst_ptr + temp1 + 14) = (unsigned char)r5;
+			*(dst_ptr + temp1 + 15) = (unsigned char)b6;
+			*(dst_ptr + temp1 + 16) = (unsigned char)g6;
+			*(dst_ptr + temp1 + 17) = (unsigned char)r6;
+			*(dst_ptr + temp1 + 18) = (unsigned char)b7;
+			*(dst_ptr + temp1 + 19) = (unsigned char)g7;
+			*(dst_ptr + temp1 + 20) = (unsigned char)r7;
+			*(dst_ptr + temp1 + 21) = (unsigned char)b8;
+			*(dst_ptr + temp1 + 22) = (unsigned char)g8;
+			*(dst_ptr + temp1 + 23) = (unsigned char)r8;
+
+			//*(unsigned int*)(dst_ptr + temp1) = word0;
+			//*(unsigned int*)(dst_ptr + temp1 + 4) = word1;
+			//*(unsigned int*)(dst_ptr + temp1 + 8) = word2;
 		}
 	}
 	return 0;
@@ -256,7 +294,7 @@ int lock_frame_buffer(int current_frame){
 	while(!have_lock){
 		next_frame = ((next_frame+1) % BUFF_COUNT);
 
-		if(0 == sem_trywait(&frame_sem[next_frame])){
+		if(0 == pthread_mutex_trylock(&frame_mutex[next_frame])){
 			have_lock = 1;
 			current_frame = next_frame;
 		}
@@ -275,19 +313,19 @@ void* capture_frame(void* param){
 	current_buffer = lock_frame_buffer(current_buffer);
 	yuyv_2_rgb888(frame_buffer[current_buffer]);
 	has_frame[current_buffer] = 1;
-	sem_post(&frame_sem[current_buffer]);
+	pthread_mutex_unlock(&frame_mutex[current_buffer]);
 #ifdef USE_MULTI_THREAD_CAPTURE
 	}
 #endif
 	return NULL;
 }
 
+IplImage* capImage = NULL;
 //This function will only operate correctly if *only* ONE image is to be captured
 //and held at a time by a function that calls v4lQueryFrame. If multiple calls to
 //this function are made, all resulting pointers will reference the SAME image.
 //If multiple calls are required, be certain to clone the resulting image!
 IplImage* v4lQueryFrame(){
-	static IplImage* capImage = NULL;
 	static int current_buffer = 0;
 	static int valid_frame = 0;
 
@@ -296,7 +334,7 @@ IplImage* v4lQueryFrame(){
 	if(valid_frame){
 		has_frame[current_buffer] = 0;
 		valid_frame = 0;
-		sem_post(&frame_sem[current_buffer]);
+		pthread_mutex_unlock(&frame_mutex[current_buffer]);
 	}
 
 	//scan the frame buffers for a frame
@@ -305,14 +343,14 @@ IplImage* v4lQueryFrame(){
 		//check if buffer has been initialized
 		if(0 == has_frame[current_buffer]){
 			//if buffer is empty, release it and try again
-			sem_post(&frame_sem[current_buffer]);
+			pthread_mutex_unlock(&frame_mutex[current_buffer]);
 		}else{
 			//frame buffer has a frame. use it.
 			valid_frame = 1;
 		}
 	}
 
-	//avoid memory leak incurred by not deallocating image header, make rawImage static
+	//avoid memory leak incurred by not deallocating image header, make capImage static
 	if(NULL == capImage)
 		capImage = cvCreateImageHeader(capture_info.dim, IPL_DEPTH_8U, 3);
 
