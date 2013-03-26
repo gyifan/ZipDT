@@ -45,10 +45,6 @@ IplImage* im_gray = NULL;
 
 //The variables below are used to map game controls
 int turncount = 0;
-bool turnaround = false;
-bool pieceRight = false;
-bool pieceLeft = false;
-bool pieceDown = false;
 int rightcount = 0;
 int leftcount = 0;
 int downcount = 0;
@@ -232,12 +228,25 @@ cvCopy(ImaskCodeBook,ImaskCodeBookCC);
 }
 
 char get_input(){
-	int sumDirection = 0;
-	int sumvect = 0;
+	int sum_x = 0;
+	int sum_y = 0;
+	int diff_x = 0;
+	int diff_y = 0;
+	int temp_x = 0;
+	int temp_y = 0;
 	int number_of_features;
 	int i = 0;
 	char input_char = INPUT_NONE;
 	CvPoint p,q;
+	bool turnaround;
+	bool pieceRight;
+	bool pieceLeft;
+	bool pieceDown;
+	turnaround = false;
+	pieceRight = false;
+	pieceLeft = false;
+	pieceDown = false;
+
 	//The Optical Flow window is created to visualize the output of the optical flow algorithm
 	//The size of this winodw is automatically adjusted in order to match the previously determined window width and height
 
@@ -275,7 +284,7 @@ char get_input(){
 	cvDilate(skinImage, skinImage, NULL, 1);
 	//use the morphological 'close' operation to remove small background noise.
 	cvDilate(skinImage, skinImage, NULL, 1);
-	cvErode(skinImage, skinImage, NULL, 1);
+//	cvErode(skinImage, skinImage, NULL, 1);
 
 	if(DEBUG_MODE){
 		gettimeofday(&timevalB, NULL);
@@ -392,7 +401,8 @@ char get_input(){
 			printf("cvCalcOpticalFlowPyrLK time[us] = %d\n", timevalC.tv_sec * 1000000 + timevalC.tv_usec);
 		}
 
-		sumDirection = 0;
+		sum_x = 0;
+		sum_y = 0;
 
 		//Draw lines for indication of optical flow vectors between frames
 		//A line is drawn for each shared feature found between frames
@@ -415,6 +425,11 @@ char get_input(){
 			q.x = (int) frame1_features[i].x;
 			q.y = (int) frame1_features[i].y;
 
+			diff_x = p.x-q.x;
+			diff_y = p.y-q.y;
+			temp_x = abs(diff_x);
+			temp_y = abs(diff_y);
+
 			if(DRAWING_ON){
 				//Calculate the hypotenuse and angle between the same feature in 2 separate frames
 				double angle;		angle = atan2((double) p.y - q.y, (double) p.x - q.x);
@@ -431,23 +446,14 @@ char get_input(){
 				cvLine(frame1, p, q, line_color, line_thickness, CV_AA, 0);
 			}
 
-			sumvect = p.x-q.x;
-
-			if(sumvect < 0){
-				if((-(sumvect) > X_DELTA_MIN) && (-(sumvect) < X_DELTA_MAX))
-					sumDirection += sumvect;
-			}else{
-				if((sumvect > X_DELTA_MIN) && (sumvect < X_DELTA_MAX))
-					sumDirection += sumvect;
+			//Only filter out max values of other coordinate to remove random 'big' noise
+			if(temp_x > X_DELTA_MIN && temp_x < X_DELTA_MAX && temp_y < Y_DELTA_MAX){
+					sum_x += diff_x;
 			}
-			/*
-			   if(((p.x-q.x) > X_DELTA_MIN || (-(p.x-q.x)) > X_DELTA_MIN)
-			   && (((p.x - q.x) < X_DELTA_MAX) || ((-(p.x - q.x)) < X_DELTA_MAX))){
-			   sumDirection += p.x - q.x;
-			   }
-			   */
 
-			//sumDirection += q.x - p.x;
+			if(temp_y > Y_DELTA_MIN && temp_y < Y_DELTA_MAX && temp_x < X_DELTA_MAX){
+					sum_y += diff_y;
+			}
 		}
 
 		if(DRAWING_ON){
@@ -456,28 +462,35 @@ char get_input(){
 			cvShowImage("Contours", contour_frame);
 			cvWaitKey(1); //cause high gui to finish pending highgui operations. (allow images to be displayed)
 		}
-		if(DEBUG_MODE)
-			printf("X_DIR_SUM = %d\n", sumDirection);
+
+		if(DEBUG_MODE){
+			printf("X_DIR_SUM = %d\n", sum_x);
+			printf("Y_DIR_SUM = %d\n", sum_y);
+		}
 
 		//control logic starts here			
-		if(sumDirection < 0){
-			if(-(sumDirection) > X_DIRECTION_THRESHOLD){
+		if(abs(sum_x) > X_DIRECTION_THRESHOLD){
+			if(sum_x < 0){
 				pieceRight = false;
 				pieceLeft = true;
 			}else{
-				pieceRight = false;
+				pieceRight = true;
 				pieceLeft = false;
 			}
 		}else{
-			if(sumDirection > X_DIRECTION_THRESHOLD){
-				pieceRight = true;
-				pieceLeft = false;
-			}else{
-				pieceRight = false;
-				pieceLeft = false;
-			}
+			pieceRight = false;
+			pieceLeft = false;
 		}
+		
+		//if(abs(sum_y) > Y_DIRECTION_THRESHOLD){
+		//	if(sum_y < 0){
+		//		pieceDown = true;
+		//	}else{
+		//
+		//	}
+		//}
 	}
+
 	if(DRAWING_ON){
 		//Troubleshooting text for motion detection
 		CvFont font;
@@ -568,25 +581,25 @@ int detect(IplImage* img_8uc1,IplImage* img_8uc3, int use_accel) {
 			}else{
 				area=cvContourArea(c,CV_WHOLE_SEQ);
 			}
-/*
+
 			if(area>areamax){
 				areamax=area;
 				maxitem=c;
 				maxn=n;
 			}
 			n++;
-*/
-			if(area > CONTOUR_MIN_AREA){
-				c = cvApproxPoly(c, sizeof(CvContour), storage3, CV_POLY_APPROX_DP, 10, 0);
-				CvPoint pt0;
-				CvSeq* hull;
-				hull = cvConvexHull2(c, 0, CV_CLOCKWISE, 0);
+		}
 
-				//Determine the total number of defects
-				defects = cvConvexityDefects(c,hull,storage2);
-				if(defects_max == NULL || defects->total > defects_max->total){
-					defects_max = defects;
-				}
+		if(areamax > CONTOUR_MIN_AREA){
+			maxitem = cvApproxPoly(maxitem, sizeof(CvContour), storage3, CV_POLY_APPROX_DP, 10, 0);
+			CvPoint pt0;
+			CvSeq* hull;
+			hull = cvConvexHull2(maxitem, 0, CV_CLOCKWISE, 0);
+
+			//Determine the total number of defects
+			defects = cvConvexityDefects(maxitem, hull, storage2);
+			if(defects_max == NULL || defects->total > defects_max->total){
+				defects_max = defects;
 			}
 		}
 
@@ -626,11 +639,12 @@ int detect(IplImage* img_8uc1,IplImage* img_8uc3, int use_accel) {
 			free(defectArray);  
 		} 
 
-		cvReleaseMemStorage( &storage1 );
-		cvReleaseMemStorage( &storage2 );
-		cvReleaseMemStorage( &storage3 );
+		cvReleaseMemStorage(&storage1);
+		cvReleaseMemStorage(&storage2);
+		cvReleaseMemStorage(&storage3);
 	}
-	cvReleaseMemStorage( &storage );
+
+	cvReleaseMemStorage(&storage);
 	return 0;
 }
 
