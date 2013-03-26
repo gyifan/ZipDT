@@ -280,6 +280,7 @@ char get_input(){
 		gettimeofday(&timevalA, NULL);
 	}
 
+	/*
 	if(!USE_V4L_CAPTURE)
 		cvCvtColor(rawImage, yuvImage, CV_BGR2YCrCb);//YUV For codebook method
 	else
@@ -324,7 +325,7 @@ char get_input(){
 
 	if(NULL == ImaskCodeBookCC)
 		return INPUT_NONE;
-
+*/
 	if(DEBUG_MODE){
 		gettimeofday(&timevalA, NULL);
 	}
@@ -508,7 +509,7 @@ char get_input(){
 		}
 
 		if(DRAWING_ON){
-			cvShowImage("Foreground", ImaskCodeBookCC);
+			//cvShowImage("Foreground", ImaskCodeBookCC);
 			cvShowImage("Optical Flow",frame1);
 			cvShowImage("Contours", contour_frame);
 			cvWaitKey(1); //cause high gui to finish pending highgui operations. (allow images to be displayed)
