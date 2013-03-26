@@ -36,6 +36,7 @@ extern int USE_V4L_CAPTURE;
 
 IplImage* rawImage = NULL;
 IplImage* skinImage = NULL;
+IplImage* tmp_skinImage = NULL;
 IplImage* yuvImage = NULL;
 IplImage* ImaskCodeBook = NULL;
 IplImage* ImaskCodeBookCC = NULL;
@@ -55,7 +56,6 @@ int delaystart = 0;
 
 //nomdef - Number of defects in the produced image contour
 int nomdef = 0;
-int nframesToLearnBG = 100;
 static const double pi = 3.14159265358979323846;
 //Used as a delay variable in order to prevent constant spinning of game pieces
 int fingerDelay = 0;
@@ -63,15 +63,7 @@ int fingerDelay = 0;
 //Delay calculation variables
 int nloop = 1;
 
-//Number of frame features that will be analyzed with optical flow		
-//I currently designated the number of frame to be 100, but this number can be increased for improved accuracy
-//It should be noted that increasing the number of features will result in a lower processing rate
-const int MAX_FEATURES = 100;
-
-//This array will contain the features found in the first frame
 CvPoint2D32f frame1_features[MAX_FEATURES];
-
-//This array will contain the features found in the second frame
 CvPoint2D32f frame2_features[MAX_FEATURES];
 //Use the same count of features as used for frame 1
 char optical_flow_found_feature[MAX_FEATURES];
@@ -172,15 +164,8 @@ int init_accel(int use_accel){
 void init_frame_processing(int calib_frames){
 	int nframes;
 
-	nframesToLearnBG = calib_frames;
-
-	allocateOnDemand(&rawImage, capture_info.dim, IPL_DEPTH_8U, 3);
 	allocateOnDemand(&skinImage, capture_info.dim, IPL_DEPTH_8U, 1);
-	allocateOnDemand(&yuvImage, capture_info.dim, IPL_DEPTH_8U, 3);
-
-	allocateOnDemand(&ImaskCodeBook, capture_info.dim, IPL_DEPTH_8U, 1);
-	allocateOnDemand(&ImaskCodeBookCC, capture_info.dim, IPL_DEPTH_8U, 1);
-	allocateOnDemand(&ImaskCodeBookCCInv, capture_info.dim, IPL_DEPTH_8U, 1);
+	allocateOnDemand(&tmp_skinImage, capture_info.dim, IPL_DEPTH_8U, 1);
 
 	allocateOnDemand(&contour_frame, capture_info.dim, IPL_DEPTH_8U,3);
 	allocateOnDemand(&frame1_1C, capture_info.dim, IPL_DEPTH_8U, 1);
@@ -194,7 +179,7 @@ void init_frame_processing(int calib_frames){
 	//allocateOnDemand(&im_gray, cvGetSize(rawImage), IPL_DEPTH_8U, 1);
 	allocateOnDemand(&im_gray, capture_info.dim, IPL_DEPTH_8U, 1);
 
-/*
+	/*
 	//create background model
 	cvSet(ImaskCodeBook,cvScalar(255));
 
@@ -207,38 +192,38 @@ void init_frame_processing(int calib_frames){
 	model->cbBounds[0] = model->cbBounds[1] = model->cbBounds[2] = 10;
 
 	for(nframes = 0; nframes <= nframesToLearnBG; nframes++){
-		if(!DEBUG_MODE){
-			mvprintw(0,0, "Creating background model. Move a little to create a more stable BG model.");
-			mvprintw(1,0, "%d frames to go.", nframesToLearnBG - nframes);
-			refresh();
-		}else{
-			printf("generating BG model, %d frames to go.\n", nframesToLearnBG - nframes);
-		}
-
-		if(!USE_V4L_CAPTURE){
-			rawImage = cvQueryFrame(capture);
-		}else{
-#ifndef USE_MULTI_THREAD_CAPTURE
-			capture_frame((void*)NULL); //if not multi-threaded must capture an image b4 query
-#endif
-			rawImage = v4lQueryFrame();
-		}
-
-		if(!USE_V4L_CAPTURE)
-			cvCvtColor(rawImage, yuvImage, CV_BGR2YCrCb);//YUV For codebook method
-		else
-			cvCvtColor(rawImage, yuvImage, CV_RGB2YCrCb);//YUV For codebook method. V4L query returns RGB format
-
-		if(nframes < nframesToLearnBG){
-			cvBGCodeBookUpdate(model, yuvImage);
-		}else if(nframes == nframesToLearnBG)
-			cvBGCodeBookClearStale(model, model->t/2);
+	if(!DEBUG_MODE){
+	mvprintw(0,0, "Creating background model. Move a little to create a more stable BG model.");
+	mvprintw(1,0, "%d frames to go.", nframesToLearnBG - nframes);
+	refresh();
+	}else{
+	printf("generating BG model, %d frames to go.\n", nframesToLearnBG - nframes);
 	}
-	cvCopy(ImaskCodeBook,ImaskCodeBookCC);	
+
+	if(!USE_V4L_CAPTURE){
+	rawImage = cvQueryFrame(capture);
+	}else{
+#ifndef USE_MULTI_THREAD_CAPTURE
+capture_frame((void*)NULL); //if not multi-threaded must capture an image b4 query
+#endif
+rawImage = v4lQueryFrame();
+}
+
+if(!USE_V4L_CAPTURE)
+cvCvtColor(rawImage, yuvImage, CV_BGR2YCrCb);//YUV For codebook method
+else
+cvCvtColor(rawImage, yuvImage, CV_RGB2YCrCb);//YUV For codebook method. V4L query returns RGB format
+
+if(nframes < nframesToLearnBG){
+cvBGCodeBookUpdate(model, yuvImage);
+}else if(nframes == nframesToLearnBG)
+cvBGCodeBookClearStale(model, model->t/2);
+}
+cvCopy(ImaskCodeBook,ImaskCodeBookCC);	
 */
 	if(DRAWING_ON){
-		cvNamedWindow("Foreground", CV_WINDOW_AUTOSIZE);
-		cvMoveWindow("Foreground",480,0);
+		cvNamedWindow("Detected Skin", CV_WINDOW_AUTOSIZE);
+		cvMoveWindow("Detected Skin",480,0);
 		cvNamedWindow("Contours", CV_WINDOW_AUTOSIZE);
 		cvMoveWindow("Contours", 640,480);
 		cvNamedWindow("Optical Flow", CV_WINDOW_AUTOSIZE);
@@ -285,34 +270,33 @@ char get_input(){
 		gettimeofday(&timevalA, NULL);
 	}
 
-	//use the morphological 'open' operation to remove small noise.
+	//use the morphological 'open' operation to remove small foreground noise.
 	cvErode(skinImage, skinImage, NULL, 1);
 	cvDilate(skinImage, skinImage, NULL, 1);
+	//use the morphological 'close' operation to remove small background noise.
+	cvDilate(skinImage, skinImage, NULL, 1);
+	cvErode(skinImage, skinImage, NULL, 1);
 
 	if(DEBUG_MODE){
 		gettimeofday(&timevalB, NULL);
 		timersub(&timevalB, &timevalA, &timevalC);
-		printf("open skin frame time[us] = %d\n", timevalC.tv_sec * 1000000 + timevalC.tv_usec);
+		printf("open and close frame time[us] = %d\n", timevalC.tv_sec * 1000000 + timevalC.tv_usec);
 	}
-
-	if(DRAWING_ON){
-		cvShowImage("skinnn", skinImage);
-	}
-
 
 	//reset the contour frame image.
 	memset(contour_frame->imageData, 0, contour_frame->imageSize);
+	cvCopy(skinImage, tmp_skinImage);
 
 	if(DEBUG_MODE){
 		gettimeofday(&timevalA, NULL);
 	}
 
 	if(use_accelerators & USE_ACCEL_AREA){
-		if(detect(skinImage, contour_frame, 1)){
+		if(detect(tmp_skinImage, contour_frame, 1)){
 			printf("detect failed\n");
 		}		
 	}else{
-		if(detect(skinImage, contour_frame, 0)){
+		if(detect(tmp_skinImage, contour_frame, 0)){
 			printf("detect failed\n");
 		}
 	}
@@ -356,15 +340,15 @@ char get_input(){
 
 	cvGoodFeaturesToTrack(
 			frame1_1C,		//input 8U or 32F image
-			eig_image,		//PARAM IGNORED
-			temp_image,		//PARAM IGNORED
+			NULL,//eig_image,		//PARAM IGNORED
+			NULL,//temp_image,		//PARAM IGNORED
 			frame1_features,	//array to hold corners
 			&number_of_features,	//number of corners
 			0.05,	//quality
 			5,	//min euclidean dist between corners
 			//ImaskCodeBookCC,	//ROI mask
 			//skinImage,	//ROI mask
-			NULL,
+			skinImage,
 			5,		//block size
 			0,		//0 = dont use harris, 1 = use harris corner detector
 			0.04);	//parameter of harris corner detector (if its being used)
@@ -467,7 +451,7 @@ char get_input(){
 		}
 
 		if(DRAWING_ON){
-			cvShowImage("Foreground", skinImage);
+			cvShowImage("Detected Skin", skinImage);
 			cvShowImage("Optical Flow",frame1);
 			cvShowImage("Contours", contour_frame);
 			cvWaitKey(1); //cause high gui to finish pending highgui operations. (allow images to be displayed)
@@ -528,9 +512,130 @@ char get_input(){
 
 	return input_char;
 }
-
 //Function for detecting the number of contour defects in an image
 int detect(IplImage* img_8uc1,IplImage* img_8uc3, int use_accel) {
+	CvMemStorage* storage = cvCreateMemStorage();
+	CvSeq* first_contour = NULL;
+	CvSeq* maxitem = NULL;
+	CvSeq* current_item = NULL;
+	CvSeq* defects = NULL;
+	CvSeq* defects_max = NULL;
+	double area = 0;
+	double areamax = 0;
+	int maxn=0;
+	int value;
+	//REMEMBER!! findContours modifies the source image when extracting contours!!
+	int Nc = cvFindContours(img_8uc1,storage,&first_contour,sizeof(CvContour),CV_RETR_LIST);
+	int n=0;
+	int copy_size;
+
+	if(Nc>0){
+		CvMemStorage* storage1 = cvCreateMemStorage(0);
+		CvMemStorage* storage2 = cvCreateMemStorage(0);
+		CvMemStorage* storage3 = cvCreateMemStorage(0);
+		CvSeq* ptseq = cvCreateSeq(CV_SEQ_KIND_GENERIC|CV_32SC2, sizeof(CvContour),
+				sizeof(CvPoint), storage1);
+
+		for(CvSeq* c=first_contour; c!=NULL; c=c->h_next){
+			if(use_accel){
+				//select the total elements register register
+				//This must be loaded with the number of elements in the contour.
+				if(-1 == ioctl(fd_area_accel, SELECT_REG, ELEM_COUNT_REG)){
+					perror("ioctl failed");
+					return -1;
+				}
+
+				//write number of elements to register
+				write(fd_area_accel, &(c->total), 4);
+				copy_size = c->elem_size * c->first->count;
+
+				//copy point sequence into first buffer
+				memcpy(frame_buffer_1, c->first->data, copy_size);
+
+				//start the accelerator
+				if(-1 == ioctl(fd_area_accel, ACCEL_START)){
+					perror("ioctl failed");
+					return -1;
+				}
+
+				//select the upper word of the return register
+				if(-1 == ioctl(fd_area_accel, SELECT_REG, RETURN_REG)){
+					perror("ioctl failed");
+					return -1;
+				}
+				read(fd_area_accel, &value, 4);
+				area = (double)(-value);
+			}else{
+				area=cvContourArea(c,CV_WHOLE_SEQ);
+			}
+/*
+			if(area>areamax){
+				areamax=area;
+				maxitem=c;
+				maxn=n;
+			}
+			n++;
+*/
+			if(area > CONTOUR_MIN_AREA){
+				c = cvApproxPoly(c, sizeof(CvContour), storage3, CV_POLY_APPROX_DP, 10, 0);
+				CvPoint pt0;
+				CvSeq* hull;
+				hull = cvConvexHull2(c, 0, CV_CLOCKWISE, 0);
+
+				//Determine the total number of defects
+				defects = cvConvexityDefects(c,hull,storage2);
+				if(defects_max == NULL || defects->total > defects_max->total){
+					defects_max = defects;
+				}
+			}
+		}
+
+		CvConvexityDefect* defectArray;  
+
+		defects = defects_max; //for debugging, before code is changed to defects_max below...
+
+		for(;defects;defects = defects->h_next){  
+			nomdef = defects->total; //total number of detected defects
+
+			if(nomdef == 0)  
+				continue;  
+
+			// Alloc memory for array of defects    
+			defectArray = (CvConvexityDefect*)malloc(sizeof(CvConvexityDefect)*nomdef);  
+
+			// Get defect set.  
+			cvCvtSeqToArray(defects,defectArray, CV_WHOLE_SEQ);  
+
+			// Draw marks for all the defects in the image.  
+			if(DRAWING_ON){
+				for(int i=0; i<nomdef; i++){   
+					cvLine(img_8uc3, *(defectArray[i].start), *(defectArray[i].depth_point),CV_RGB(0,0,164),1, CV_AA, 0);  
+					cvCircle(img_8uc3, *(defectArray[i].depth_point), 5, CV_RGB(164,0,0), 2, 8,0);  
+					cvCircle(img_8uc3, *(defectArray[i].start), 5, CV_RGB(164,0,0), 2, 8,0);  
+					cvLine(img_8uc3, *(defectArray[i].depth_point), *(defectArray[i].end),CV_RGB(0,0,164),1, CV_AA, 0);  
+				} 
+
+				char txt[]="0";
+				txt[0]='0'+nomdef-1;
+				CvFont font;
+				cvInitFont(&font, CV_FONT_HERSHEY_DUPLEX, 1.0, 1.0, 0, 1, CV_AA);
+				cvPutText(img_8uc3, txt, cvPoint(50, 50), &font, cvScalar(0, 0, 128, 0)); 
+			}
+
+			// Free memory.         
+			free(defectArray);  
+		} 
+
+		cvReleaseMemStorage( &storage1 );
+		cvReleaseMemStorage( &storage2 );
+		cvReleaseMemStorage( &storage3 );
+	}
+	cvReleaseMemStorage( &storage );
+	return 0;
+}
+
+//Function for detecting the number of contour defects in an image
+int detect_old(IplImage* img_8uc1,IplImage* img_8uc3, int use_accel) {
 	CvMemStorage* storage = cvCreateMemStorage();
 	CvSeq* first_contour = NULL;
 	CvSeq* maxitem = NULL;
