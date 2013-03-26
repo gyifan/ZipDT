@@ -8,6 +8,11 @@
 #define BUFF_COUNT	3
 #define FILE_VIDEO 	"/dev/video0"
 
+#define Cb_SKIN_MIN		77
+#define Cb_SKIN_MAX		127
+#define Cr_SKIN_MIN		133
+#define Cr_SKIN_MAX		173
+
 #define CAPTURE_NAME_480	"480"
 #define CAPTURE_NAME_720	"720"
 #define CAPTURE_NAME_1080	"1080"

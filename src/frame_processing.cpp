@@ -35,6 +35,7 @@ extern int use_accelerators;
 extern int USE_V4L_CAPTURE;
 
 IplImage* rawImage = NULL;
+IplImage* skinImage = NULL;
 IplImage* yuvImage = NULL;
 IplImage* ImaskCodeBook = NULL;
 IplImage* ImaskCodeBookCC = NULL;
@@ -174,6 +175,7 @@ void init_frame_processing(int calib_frames){
 	nframesToLearnBG = calib_frames;
 
 	allocateOnDemand(&rawImage, capture_info.dim, IPL_DEPTH_8U, 3);
+	allocateOnDemand(&skinImage, capture_info.dim, IPL_DEPTH_8U, 1);
 	allocateOnDemand(&yuvImage, capture_info.dim, IPL_DEPTH_8U, 3);
 
 	allocateOnDemand(&ImaskCodeBook, capture_info.dim, IPL_DEPTH_8U, 1);
@@ -192,6 +194,7 @@ void init_frame_processing(int calib_frames){
 	//allocateOnDemand(&im_gray, cvGetSize(rawImage), IPL_DEPTH_8U, 1);
 	allocateOnDemand(&im_gray, capture_info.dim, IPL_DEPTH_8U, 1);
 
+/*
 	//create background model
 	cvSet(ImaskCodeBook,cvScalar(255));
 
@@ -232,7 +235,7 @@ void init_frame_processing(int calib_frames){
 			cvBGCodeBookClearStale(model, model->t/2);
 	}
 	cvCopy(ImaskCodeBook,ImaskCodeBookCC);	
-
+*/
 	if(DRAWING_ON){
 		cvNamedWindow("Foreground", CV_WINDOW_AUTOSIZE);
 		cvMoveWindow("Foreground",480,0);
@@ -264,7 +267,8 @@ char get_input(){
 #ifndef USE_MULTI_THREAD_CAPTURE
 		capture_frame((void*)NULL); //if not multi-threaded must capture an image b4 query
 #endif
-		rawImage = v4lQueryFrame();
+		//rawImage = v4lQueryFrame();
+		skinImage = v4lQueryFrame();
 	}
 
 	if(DEBUG_MODE){
@@ -273,8 +277,10 @@ char get_input(){
 		printf("capture frame time[us] = %d\n", timevalC.tv_sec * 1000000 + timevalC.tv_usec);
 	}
 
-	if(NULL == rawImage) 
+	if(NULL == skinImage) 
 		return INPUT_NONE;	//error condition?
+
+	cvShowImage("skinnn", skinImage);
 
 	if(DEBUG_MODE){
 		gettimeofday(&timevalA, NULL);
@@ -325,7 +331,7 @@ char get_input(){
 
 	if(NULL == ImaskCodeBookCC)
 		return INPUT_NONE;
-*/
+
 	if(DEBUG_MODE){
 		gettimeofday(&timevalA, NULL);
 	}
@@ -338,12 +344,26 @@ char get_input(){
 		printf("cvCopy time[us] = %d\n", timevalC.tv_sec * 1000000 + timevalC.tv_usec);
 	}
 
+	if(DEBUG_MODE){
+		gettimeofday(&timevalA, NULL);
+	}
+
 	if(use_accelerators & USE_ACCEL_AREA){
 		if(detect(ImaskCodeBookCC, contour_frame, 1)){
 			printf("detect failed\n");
 		}		
 	}else{
 		if(detect(ImaskCodeBookCC, contour_frame, 0)){
+			printf("detect failed\n");
+		}
+	}
+*/
+	if(use_accelerators & USE_ACCEL_AREA){
+		if(detect(skinImage, contour_frame, 1)){
+			printf("detect failed\n");
+		}		
+	}else{
+		if(detect(skinImage, contour_frame, 0)){
 			printf("detect failed\n");
 		}
 	}
@@ -371,21 +391,24 @@ char get_input(){
 			canTurn = 1;
 		}
 	}
-
+/*
 	if(DEBUG_MODE){
 		gettimeofday(&timevalA, NULL);
 	}
 
-	cvCvtColor(rawImage,im_gray,CV_RGB2GRAY);
+//	cvCvtColor(rawImage,im_gray,CV_RGB2GRAY);
 
 	if(DEBUG_MODE){
 		gettimeofday(&timevalB, NULL);
 		timersub(&timevalB, &timevalA, &timevalC);
 		printf("cvt RGB2GRAY time[us] = %d\n", timevalC.tv_sec * 1000000 + timevalC.tv_usec);
 	}
+*/
+//	cvCopy(im_gray, frame1);
+//	cvCopy(im_gray, frame1_1C);
 
-	cvCopy(im_gray, frame1);
-	cvCopy(im_gray, frame1_1C);
+	cvCopy(skinImage, frame1);
+	cvCopy(skinImage, frame1_1C);
 
 	if(NULL == frame1)
 		return INPUT_NONE;
@@ -406,7 +429,9 @@ char get_input(){
 			&number_of_features,	//number of corners
 			0.05,	//quality
 			5,	//min euclidean dist between corners
-			ImaskCodeBookCC,	//ROI mask
+			//ImaskCodeBookCC,	//ROI mask
+			//skinImage,	//ROI mask
+			NULL,
 			5,		//block size
 			0,		//0 = dont use harris, 1 = use harris corner detector
 			0.04);	//parameter of harris corner detector (if its being used)
@@ -509,7 +534,7 @@ char get_input(){
 		}
 
 		if(DRAWING_ON){
-			//cvShowImage("Foreground", ImaskCodeBookCC);
+			cvShowImage("Foreground", skinImage);
 			cvShowImage("Optical Flow",frame1);
 			cvShowImage("Contours", contour_frame);
 			cvWaitKey(1); //cause high gui to finish pending highgui operations. (allow images to be displayed)
