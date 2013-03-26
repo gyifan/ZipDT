@@ -284,7 +284,7 @@ char get_input(){
 	cvDilate(skinImage, skinImage, NULL, 1);
 	//use the morphological 'close' operation to remove small background noise.
 	cvDilate(skinImage, skinImage, NULL, 1);
-//	cvErode(skinImage, skinImage, NULL, 1);
+	//	cvErode(skinImage, skinImage, NULL, 1);
 
 	if(DEBUG_MODE){
 		gettimeofday(&timevalB, NULL);
@@ -448,11 +448,11 @@ char get_input(){
 
 			//Only filter out max values of other coordinate to remove random 'big' noise
 			if(temp_x > X_DELTA_MIN && temp_x < X_DELTA_MAX && temp_y < Y_DELTA_MAX){
-					sum_x += diff_x;
+				sum_x += diff_x;
 			}
 
 			if(temp_y > Y_DELTA_MIN && temp_y < Y_DELTA_MAX && temp_x < X_DELTA_MAX){
-					sum_y += diff_y;
+				sum_y += diff_y;
 			}
 		}
 
@@ -469,20 +469,33 @@ char get_input(){
 		}
 
 		//control logic starts here			
-		if(abs(sum_x) > X_DIRECTION_THRESHOLD){
+		if(abs(sum_x) > X_SUM_THRESHOLD){
 			if(sum_x < 0){
-				pieceRight = false;
-				pieceLeft = true;
+				if(rightcount == 0){
+					leftcount++;
+				}else{
+					leftcount = 0;
+					rightcount = 0;
+				}
 			}else{
-				pieceRight = true;
-				pieceLeft = false;
+				if(leftcount == 0){
+					rightcount++;
+				}else{
+					leftcount = 0;
+					rightcount = 0;
+				}
 			}
-		}else{
-			pieceRight = false;
-			pieceLeft = false;
 		}
-		
-		//if(abs(sum_y) > Y_DIRECTION_THRESHOLD){
+
+		if(leftcount > X_MOTION_THRESHOLD){
+			pieceLeft = true;
+			leftcount = 0;
+		}else if(rightcount > X_MOTION_THRESHOLD){
+			pieceRight = true;
+			rightcount = 0;
+		}
+
+		//if(abs(sum_y) > Y_SUM_THRESHOLD){
 		//	if(sum_y < 0){
 		//		pieceDown = true;
 		//	}else{
@@ -528,24 +541,28 @@ char get_input(){
 //Function for detecting the number of contour defects in an image
 int detect(IplImage* img_8uc1,IplImage* img_8uc3, int use_accel) {
 	CvMemStorage* storage = cvCreateMemStorage();
+	CvMemStorage* poly_storage[2];
+	CvMemStorage* defect_storage[2];
 	CvSeq* first_contour = NULL;
-	CvSeq* maxitem = NULL;
-	CvSeq* current_item = NULL;
-	CvSeq* defects = NULL;
-	CvSeq* defects_max = NULL;
+	CvSeq* maxitem[2] = {NULL, NULL};
+	CvSeq* defects[2] = {NULL, NULL};
 	double area = 0;
-	double areamax = 0;
-	int maxn=0;
+	double areamax[2] = {0, 0};
 	int value;
+	int i = 0;
+
 	//REMEMBER!! findContours modifies the source image when extracting contours!!
 	int Nc = cvFindContours(img_8uc1,storage,&first_contour,sizeof(CvContour),CV_RETR_LIST);
-	int n=0;
 	int copy_size;
 
+	for(i = 0; i < 2; i++){
+		defect_storage[i] = cvCreateMemStorage(0);
+		poly_storage[i] = cvCreateMemStorage(0);
+	}
+
+	CvMemStorage* storage1 = cvCreateMemStorage(0);
+
 	if(Nc>0){
-		CvMemStorage* storage1 = cvCreateMemStorage(0);
-		CvMemStorage* storage2 = cvCreateMemStorage(0);
-		CvMemStorage* storage3 = cvCreateMemStorage(0);
 		CvSeq* ptseq = cvCreateSeq(CV_SEQ_KIND_GENERIC|CV_32SC2, sizeof(CvContour),
 				sizeof(CvPoint), storage1);
 
@@ -582,66 +599,73 @@ int detect(IplImage* img_8uc1,IplImage* img_8uc3, int use_accel) {
 				area=cvContourArea(c,CV_WHOLE_SEQ);
 			}
 
-			if(area>areamax){
-				areamax=area;
-				maxitem=c;
-				maxn=n;
+			//store information about largest 2 contours (face and hand?)
+			//index 0 holds largest area, 1 holds next largest
+			if(area > areamax[0]){
+				areamax[1] = areamax[0];
+				areamax[0] = area;
+				maxitem[1] = maxitem[0];
+				maxitem[0] = c;
+			}else if(area > areamax[1]){
+				areamax[1] = area;
+				maxitem[1] = c;
 			}
-			n++;
 		}
 
-		if(areamax > CONTOUR_MIN_AREA){
-			maxitem = cvApproxPoly(maxitem, sizeof(CvContour), storage3, CV_POLY_APPROX_DP, 10, 0);
-			CvPoint pt0;
-			CvSeq* hull;
-			hull = cvConvexHull2(maxitem, 0, CV_CLOCKWISE, 0);
-
-			//Determine the total number of defects
-			defects = cvConvexityDefects(maxitem, hull, storage2);
-			if(defects_max == NULL || defects->total > defects_max->total){
-				defects_max = defects;
+		for(i = 0; i < 2; i++){
+			if(areamax[i] > CONTOUR_MIN_AREA){
+				maxitem[i] = cvApproxPoly(maxitem[i], sizeof(CvContour), poly_storage[i], CV_POLY_APPROX_DP, 5, 0);
+				CvPoint pt0;
+				CvSeq* hull;
+				hull = cvConvexHull2(maxitem[i], 0, CV_CLOCKWISE, 0);
+				defects[i] = cvConvexityDefects(maxitem[i], hull, defect_storage[i]);
 			}
 		}
 
 		CvConvexityDefect* defectArray;  
 
-		defects = defects_max; //for debugging, before code is changed to defects_max below...
+		for(i = 0; i < 2; i++){
+			for(;defects[i];defects[i] = defects[i]->h_next){  
+				nomdef = defects[i]->total; //total number of detected defects
 
-		for(;defects;defects = defects->h_next){  
-			nomdef = defects->total; //total number of detected defects
+				if(nomdef == 0)  
+					continue;  
 
-			if(nomdef == 0)  
-				continue;  
+				// Alloc memory for array of defects    
+				defectArray = (CvConvexityDefect*)malloc(sizeof(CvConvexityDefect)*nomdef);  
 
-			// Alloc memory for array of defects    
-			defectArray = (CvConvexityDefect*)malloc(sizeof(CvConvexityDefect)*nomdef);  
+				// Get defect set.  
+				cvCvtSeqToArray(defects[i],defectArray, CV_WHOLE_SEQ);  
 
-			// Get defect set.  
-			cvCvtSeqToArray(defects,defectArray, CV_WHOLE_SEQ);  
+				// Draw marks for all the defects in the image.  
+				if(DRAWING_ON){
+					for(int i=0; i<nomdef; i++){   
+						cvLine(img_8uc3, *(defectArray[i].start), *(defectArray[i].depth_point),CV_RGB(0,0,164),1, CV_AA, 0);  
+						cvCircle(img_8uc3, *(defectArray[i].depth_point), 5, CV_RGB(164,0,0), 2, 8,0);  
+						cvCircle(img_8uc3, *(defectArray[i].start), 5, CV_RGB(164,0,0), 2, 8,0);  
+						cvLine(img_8uc3, *(defectArray[i].depth_point), *(defectArray[i].end),CV_RGB(0,0,164),1, CV_AA, 0);  
+					} 
 
-			// Draw marks for all the defects in the image.  
-			if(DRAWING_ON){
-				for(int i=0; i<nomdef; i++){   
-					cvLine(img_8uc3, *(defectArray[i].start), *(defectArray[i].depth_point),CV_RGB(0,0,164),1, CV_AA, 0);  
-					cvCircle(img_8uc3, *(defectArray[i].depth_point), 5, CV_RGB(164,0,0), 2, 8,0);  
-					cvCircle(img_8uc3, *(defectArray[i].start), 5, CV_RGB(164,0,0), 2, 8,0);  
-					cvLine(img_8uc3, *(defectArray[i].depth_point), *(defectArray[i].end),CV_RGB(0,0,164),1, CV_AA, 0);  
-				} 
+					char txt[50];
+					//txti[0]='0'+nomdef-1;
+					sprintf(txt,"%d",nomdef);
+					CvFont font;
+					cvInitFont(&font, CV_FONT_HERSHEY_DUPLEX, 1.0, 1.0, 0, 1, CV_AA);
+					cvPutText(img_8uc3, txt, cvPoint(50, 50 + 50 * i), &font, cvScalar(0, 0, 128, 0)); 
+					sprintf(txt,"%.0f",areamax[i]);
+					cvPutText(img_8uc3, txt, cvPoint(100, 50 + 50 * i), &font, cvScalar(0, 0, 128, 0)); 
+				}
 
-				char txt[]="0";
-				txt[0]='0'+nomdef-1;
-				CvFont font;
-				cvInitFont(&font, CV_FONT_HERSHEY_DUPLEX, 1.0, 1.0, 0, 1, CV_AA);
-				cvPutText(img_8uc3, txt, cvPoint(50, 50), &font, cvScalar(0, 0, 128, 0)); 
-			}
-
-			// Free memory.         
-			free(defectArray);  
-		} 
+				// Free memory.         
+				free(defectArray);  
+			} 
+		}
 
 		cvReleaseMemStorage(&storage1);
-		cvReleaseMemStorage(&storage2);
-		cvReleaseMemStorage(&storage3);
+		for(i = 0; i < 2; i++){
+			cvReleaseMemStorage(&defect_storage[i]);
+			cvReleaseMemStorage(&poly_storage[i]);
+		}
 	}
 
 	cvReleaseMemStorage(&storage);
