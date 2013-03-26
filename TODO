@@ -17,8 +17,10 @@ TODO:
 
 **** Consider this, if this is converted to an accelerator, it would be relatively easy to convert capture thread into a separate process, since frames are being passed through shared memory region. System V semaphores could be used to control access... Will this potentially have any benefits? Do some more research!
 
-2. IF process takes any significant amount of time, convert to an accelerator.
+2. IF process takes any significant amount of time, convert to an accelerator --> Likely it will NOT since it is a separate thread and currently corner detector (good features to track) and optical flow functions consume a majority of the processing time. <-- If the feature detection and optical flow algorithms take longer than the capture process, then the apparent cost of capturing a frame in the image processing flow is 0!
 
+	-Add device driver support and user accessible registers to specify destination buffer to store result to.
+	-Add registers to specify range of Cb and Cr values
 
 frame_grabber.cpp:
 -remove yuv422 to rgb888 conversion. have data returned in yuv format instead. verify that yuv422 can be used in opencv, if not, convert to a supported yuv format.
