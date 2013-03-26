@@ -277,87 +277,36 @@ char get_input(){
 		printf("capture frame time[us] = %d\n", timevalC.tv_sec * 1000000 + timevalC.tv_usec);
 	}
 
-	if(NULL == skinImage) 
+	if(NULL == skinImage){
 		return INPUT_NONE;	//error condition?
-
-	cvShowImage("skinnn", skinImage);
+	}
 
 	if(DEBUG_MODE){
 		gettimeofday(&timevalA, NULL);
 	}
 
-	/*
-	if(!USE_V4L_CAPTURE)
-		cvCvtColor(rawImage, yuvImage, CV_BGR2YCrCb);//YUV For codebook method
-	else
-		cvCvtColor(rawImage, yuvImage, CV_RGB2YCrCb);//YUV For codebook method. V4L query returns RGB format
+	//use the morphological 'open' operation to remove small noise.
+	cvErode(skinImage, skinImage, NULL, 1);
+	cvDilate(skinImage, skinImage, NULL, 1);
 
 	if(DEBUG_MODE){
 		gettimeofday(&timevalB, NULL);
 		timersub(&timevalB, &timevalA, &timevalC);
-		printf("cvt RGB2YUV time[us] = %d\n", timevalC.tv_sec * 1000000 + timevalC.tv_usec);
+		printf("open skin frame time[us] = %d\n", timevalC.tv_sec * 1000000 + timevalC.tv_usec);
 	}
 
-	if(NULL == yuvImage)
-		return INPUT_NONE;
+	if(DRAWING_ON){
+		cvShowImage("skinnn", skinImage);
+	}
+
+
+	//reset the contour frame image.
+	memset(contour_frame->imageData, 0, contour_frame->imageSize);
 
 	if(DEBUG_MODE){
 		gettimeofday(&timevalA, NULL);
 	}
 
-	// Find foreground by codebook method
-	cvBGCodeBookDiff(model, yuvImage, ImaskCodeBookCC);
-
-	if(DEBUG_MODE){
-		gettimeofday(&timevalB, NULL);
-		timersub(&timevalB, &timevalA, &timevalC);
-		printf("cvBGCodeBookDiff time[us] = %d\n", timevalC.tv_sec * 1000000 + timevalC.tv_usec);
-	}
-
-	if(NULL == ImaskCodeBookCC)
-		return INPUT_NONE;
-
-	if(DEBUG_MODE){
-		gettimeofday(&timevalA, NULL);
-	}
-
-	cvSegmentFGMask(ImaskCodeBookCC);
-
-	if(DEBUG_MODE){
-		gettimeofday(&timevalB, NULL);
-		timersub(&timevalB, &timevalA, &timevalC);
-		printf("cvSegmentFGMask time[us] = %d\n", timevalC.tv_sec * 1000000 + timevalC.tv_usec);
-	}
-
-	if(NULL == ImaskCodeBookCC)
-		return INPUT_NONE;
-
-	if(DEBUG_MODE){
-		gettimeofday(&timevalA, NULL);
-	}
-
-	cvCopy(rawImage, contour_frame);
-
-	if(DEBUG_MODE){
-		gettimeofday(&timevalB, NULL);
-		timersub(&timevalB, &timevalA, &timevalC);
-		printf("cvCopy time[us] = %d\n", timevalC.tv_sec * 1000000 + timevalC.tv_usec);
-	}
-
-	if(DEBUG_MODE){
-		gettimeofday(&timevalA, NULL);
-	}
-
-	if(use_accelerators & USE_ACCEL_AREA){
-		if(detect(ImaskCodeBookCC, contour_frame, 1)){
-			printf("detect failed\n");
-		}		
-	}else{
-		if(detect(ImaskCodeBookCC, contour_frame, 0)){
-			printf("detect failed\n");
-		}
-	}
-*/
 	if(use_accelerators & USE_ACCEL_AREA){
 		if(detect(skinImage, contour_frame, 1)){
 			printf("detect failed\n");
@@ -391,22 +340,6 @@ char get_input(){
 			canTurn = 1;
 		}
 	}
-/*
-	if(DEBUG_MODE){
-		gettimeofday(&timevalA, NULL);
-	}
-
-//	cvCvtColor(rawImage,im_gray,CV_RGB2GRAY);
-
-	if(DEBUG_MODE){
-		gettimeofday(&timevalB, NULL);
-		timersub(&timevalB, &timevalA, &timevalC);
-		printf("cvt RGB2GRAY time[us] = %d\n", timevalC.tv_sec * 1000000 + timevalC.tv_usec);
-	}
-*/
-//	cvCopy(im_gray, frame1);
-//	cvCopy(im_gray, frame1_1C);
-
 	cvCopy(skinImage, frame1);
 	cvCopy(skinImage, frame1_1C);
 
