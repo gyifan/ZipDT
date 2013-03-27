@@ -345,197 +345,98 @@ char get_input(){
 			canTurn = 1;
 		}
 	}
-	
-	cvCopy(grayImage, frame1);
-	cvCopy(grayImage, frame1_1C);
 
-	if(NULL == frame1)
-		return INPUT_NONE;
-	if(NULL == frame1_1C)
-		return INPUT_NONE;
-
-	number_of_features = MAX_FEATURES;
-
-	if(DEBUG_MODE){
-		gettimeofday(&timevalA, NULL);
+	if(DRAWING_ON){
+		cvShowImage("Detected Skin", skinImage);
+		cvShowImage("Contours", contour_frame);
+		cvWaitKey(1); //cause high gui to finish pending highgui operations. (allow images to be displayed)
 	}
 
-	cvGoodFeaturesToTrack(
-			frame1_1C,		//input 8U or 32F image
-			NULL,//eig_image,		//PARAM IGNORED
-			NULL,//temp_image,		//PARAM IGNORED
-			frame1_features,	//array to hold corners
-			&number_of_features,	//number of corners
-			0.001,	//quality
-			0,	//min euclidean dist between corners
-			//ImaskCodeBookCC,	//ROI mask
-			//skinImage,	//ROI mask
-			skinImage,
-			5,		//block size
-			0,		//0 = dont use harris, 1 = use harris corner detector
-			0.04);	//parameter of harris corner detector (if its being used)
+	//THIS ISN'T GREAT--
+	//Not currently taking into account the number of COM that are currently detected.
+	//THIS MUST BE FIXED
 
-	if(DEBUG_MODE){
-		gettimeofday(&timevalB, NULL);
-		timersub(&timevalB, &timevalA, &timevalC);
-		printf("cvGoodFeaturesToTrack time[us] = %d\n", timevalC.tv_sec * 1000000 + timevalC.tv_usec);
+	int com_diff;
+	//verify that the program has a valid last center of mass value
+	if(com_x_last[0] > 0 && com_y_last[0] > 0
+			&& com_x_last[1] > 0 && com_y_last[1] > 0){
+		for(i=0; i < 2; i++){
+			com_diff = com_x_last[i] - com_x[i];
+			if(abs(com_diff) > COM_X_DIFF_THRESHOLD){
+				com_x_delta[i] = com_diff;
+			}else{
+				com_x_delta[i] = 0;
+			}
+
+		}
 	}
 
-	//Optical flow motherload
-	// frame1_1C: first frame with the known features.
-	// frame2_1C: second frame used to detect the features found in frame1
-	// "pyramid1" and "pyramid2" are workspace for the algorithm.
-	// frame1_features: features from the first frame.
-	// frame2_features: the locations of the features found in frame1, as found in the second frame.
+	if(DEBUG_MODE){
+		printf("X_DELTA_COM0 = %d\n", com_x_delta[0]);
+		printf("Y_DELTA_COM0 = %d\n", com_y_delta[0]);
+		printf("X_DELTA_COM1 = %d\n", com_x_delta[1]);
+		printf("Y_DELTA_COM1 = %d\n", com_y_delta[1]);
+	}
 
-	if(frame2_1C != NULL){
-		if(DEBUG_MODE){
-			gettimeofday(&timevalA, NULL);
-		}
 
-		cvCalcOpticalFlowPyrLK(
-				frame1_1C, //previous image
-				frame2_1C, //current image
-				pyramid1, 
-				pyramid2, 
-				frame1_features, //previous image corners
-				frame2_features, //current image corners
-				number_of_features, //number of features
-				cvSize(3,3), //size of pyramid window
-				5, //max pyramid level to use //was 5
-				optical_flow_found_feature, 
-				optical_flow_feature_error, 
-				optical_flow_termination_criteria, 
-				0);
-
-		if(DEBUG_MODE){
-			gettimeofday(&timevalB, NULL);
-			timersub(&timevalB, &timevalA, &timevalC);
-			printf("cvCalcOpticalFlowPyrLK time[us] = %d\n", timevalC.tv_sec * 1000000 + timevalC.tv_usec);
-		}
-
-		sum_x = 0;
-		sum_y = 0;
-
-		//Draw lines for indication of optical flow vectors between frames
-		//A line is drawn for each shared feature found between frames
-		for(int i = 0; i < number_of_features; i++){
-			//If there is no feature found, the continue to the next feature
-			if(optical_flow_found_feature[i] == 0){
-				continue;
-			}
-			//check error???
-			//	if(optical_flow_feature_error[i] == 0)
-			//		continue;
-
-			//Declare variables used for line creation
-			int line_thickness;				line_thickness = 1;
-			CvScalar line_color;			line_color = CV_RGB(255,0,0);
-			//Declare x and y coordinates for the same feature found in both frames
-			//p is used for the first frame while q is used for the second frame
-			p.x = (int) frame2_features[i].x;
-			p.y = (int) frame2_features[i].y;
-			q.x = (int) frame1_features[i].x;
-			q.y = (int) frame1_features[i].y;
-
-			diff_x = p.x-q.x;
-			diff_y = p.y-q.y;
-			temp_x = abs(diff_x);
-			temp_y = abs(diff_y);
-
-			if(DRAWING_ON){
-				//Calculate the hypotenuse and angle between the same feature in 2 separate frames
-				double angle;		angle = atan2((double) p.y - q.y, (double) p.x - q.x);
-				double hypotenuse;	hypotenuse = sqrt((p.y - q.y)*(p.y - q.y) + (p.x - q.x)*(p.x - q.x));
-				//Lengthen the size of the hypotenuse to make it more visible in the produced window
-				q.x = (int) (p.x - 3 * hypotenuse * cos(angle));
-				q.y = (int) (p.y - 3 * hypotenuse * sin(angle));
-				cvLine(frame1, p, q, line_color, line_thickness, CV_AA, 0);
-				p.x = (int) (q.x + 9 * cos(angle + pi / 4));
-				p.y = (int) (q.y + 9 * sin(angle + pi / 4));
-				cvLine(frame1, p, q, line_color, line_thickness, CV_AA, 0);
-				p.x = (int) (q.x + 9 * cos(angle - pi / 4));
-				p.y = (int) (q.y + 9 * sin(angle - pi / 4));
-				cvLine(frame1, p, q, line_color, line_thickness, CV_AA, 0);
-			}
-
-			//Only filter out max values of other coordinate to remove random 'big' noise
-			if(temp_x > X_DELTA_MIN && temp_x < X_DELTA_MAX && temp_y < Y_DELTA_MAX){
-				sum_x += diff_x;
-			}
-
-			if(temp_y > Y_DELTA_MIN && temp_y < Y_DELTA_MAX && temp_x < X_DELTA_MAX){
-				sum_y += diff_y;
-			}
-		}
-
-		if(DRAWING_ON){
-			cvShowImage("Detected Skin", skinImage);
-			//cvShowImage("Optical Flow",frame1);
-			cvShowImage("Contours", contour_frame);
-			cvWaitKey(1); //cause high gui to finish pending highgui operations. (allow images to be displayed)
-		}
-
-		if(DEBUG_MODE){
-			printf("X_DIR_SUM = %d\n", sum_x);
-			printf("Y_DIR_SUM = %d\n", sum_y);
-		}
-
-		
 /*
-		if(DEBUG_MODE){
-			printf("X_DELTA_COM0 = %d\n", com_x_delta[0]);
-			printf("Y_DELTA_COM0 = %d\n", com_y_delta[0]);
+	//control logic starts here			
+	if(abs(sum_x) > X_SUM_THRESHOLD){
+		if(sum_x < 0){
+			if(rightcount == 0){
+				leftcount++;
+			}else{
+				leftcount = 0;
+				rightcount = 0;
+			}
+		}else{
+			if(leftcount == 0){
+				rightcount++;
+			}else{
+				leftcount = 0;
+				rightcount = 0;
+			}
 		}
+	}
+
+	if(leftcount > X_MOTION_THRESHOLD){
+		pieceLeft = true;
+		leftcount = 0;
+	}else if(rightcount > X_MOTION_THRESHOLD){
+		pieceRight = true;
+		rightcount = 0;
+	}
+
+	//if(abs(sum_y) > Y_SUM_THRESHOLD){
+	//	if(sum_y < 0){
+	//		pieceDown = true;
+	//	}else{
+	//
+	//	}
+	//}
 */
 
-		//control logic starts here			
-		if(abs(sum_x) > X_SUM_THRESHOLD){
-			if(sum_x < 0){
-				if(rightcount == 0){
-					leftcount++;
-				}else{
-					leftcount = 0;
-					rightcount = 0;
-				}
+	if((-com_x_delta[0]) > COM_X_DELTA_THRESHOLD){
+			if(rightcount == 0){
+				leftcount++;
 			}else{
-				if(leftcount == 0){
-					rightcount++;
-				}else{
-					leftcount = 0;
-					rightcount = 0;
-				}
+				leftcount = 0;
+				rightcount = 0;
 			}
-		}
-
-		if(leftcount > X_MOTION_THRESHOLD){
-			pieceLeft = true;
-			leftcount = 0;
-		}else if(rightcount > X_MOTION_THRESHOLD){
-			pieceRight = true;
-			rightcount = 0;
-		}
-
-		//if(abs(sum_y) > Y_SUM_THRESHOLD){
-		//	if(sum_y < 0){
-		//		pieceDown = true;
-		//	}else{
-		//
-		//	}
-		//}
-		
-		
+	}else if(com_x_delta[0] > COM_X_DELTA_THRESHOLD){
+			if(leftcount == 0){
+				rightcount++;
+			}else{
+				leftcount = 0;
+				rightcount = 0;
+			}
 	}
 
-	allocateOnDemand(&frame2_1C, capture_info.dim, IPL_DEPTH_8U, 1);
-	//store the current frame to be used next itteration with optical flow
-	cvCopy(frame1_1C, frame2_1C);
-	//copy 'current frame' features into 'last frame' features
-	//This could be faster if features array was made 2-D and addressed using a variable and
-	//modulo addressing to identify current and last frame features(wouldn't need a loop, just ptr change)...
-	for(i = 0; i < MAX_FEATURES; i++)
-		memcpy(&frame2_features[i], &frame1_features[i], sizeof(CvPoint2D32f));
-
+	if(leftcount > COM_X_MOTION_THRESHOLD){
+		pieceLeft = true;
+	}else if(rightcount > COM_X_MOTION_THRESHOLD){
+		pieceRight = true;
+	}
 
 	if(pieceRight){
 		input_char = INPUT_RIGHT;
@@ -642,12 +543,17 @@ int detect(IplImage* img_8uc1,IplImage* img_8uc3, int use_accel) {
 			}
 		}
 
+		for(i = 0; i < 2; i++){
+			com_x_last[i] = com_x[i];
+			com_y_last[i] = com_y[i];
+		}
+
 		//attempt to calculate center of mass of points
 		for(i = 0; i < 2; i++){
 			if(areamax[i] > CONTOUR_MIN_AREA){
 				contour_array = (CvSeq*)malloc(sizeof(CvSeq) * maxitem[i]->total);
 				cvCvtSeqToArray(maxitem[i],contour_array, CV_WHOLE_SEQ);
-				
+
 				com_x[i] = 0;
 				com_y[i] = 0;
 				for(j = 0; j < maxitem[i]->total; j++){
@@ -693,6 +599,9 @@ int detect(IplImage* img_8uc1,IplImage* img_8uc3, int use_accel) {
 						cvCircle(img_8uc3, *(defectArray[i].start), 5, CV_RGB(164,0,0), 2, 8,0);  
 						cvLine(img_8uc3, *(defectArray[i].depth_point), *(defectArray[i].end),CV_RGB(0,0,164),1, CV_AA, 0);  
 					} 
+
+					cvCircle(img_8uc3, cvPoint(com_x[0], com_y[0]), 5, CV_RGB(0,255,0), 2, 8,0);  
+					cvCircle(img_8uc3, cvPoint(com_x[1], com_y[1]), 5, CV_RGB(0,255,0), 2, 8,0);  
 
 					char txt[50];
 					CvFont font;

@@ -9,9 +9,13 @@
 #define Y_SUM_THRESHOLD				10
 #define X_MOTION_THRESHOLD			3	//min number of frames that need to detect same x-direction motion b4 output is given
 #define X_DELTA_MIN					3//4
-#define X_DELTA_MAX					10
+#define X_DELTA_MAX					30
 #define Y_DELTA_MIN					3//4
 #define Y_DELTA_MAX					10
+
+#define COM_X_DIFF_THRESHOLD		5
+#define	COM_X_DELTA_THRESHOLD		0
+#define COM_X_MOTION_THRESHOLD		2	//min number of frames that need to detect same x-direction motion b4 output is given
 
 int init_accel(int use_accel);
 void init_frame_processing(int calib_frames);
