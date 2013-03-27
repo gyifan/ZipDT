@@ -62,6 +62,8 @@ int com_x[2];
 int com_y[2];
 int com_x_last[2] = {-1,-1};
 int com_y_last[2] = {-1,-1};
+int com_x_delta[2] = {0,0};
+int com_y_delta[2] = {0,0};
 
 //Delay calculation variables
 int nloop = 1;
@@ -469,7 +471,7 @@ char get_input(){
 
 		if(DRAWING_ON){
 			cvShowImage("Detected Skin", skinImage);
-			cvShowImage("Optical Flow",frame1);
+			//cvShowImage("Optical Flow",frame1);
 			cvShowImage("Contours", contour_frame);
 			cvWaitKey(1); //cause high gui to finish pending highgui operations. (allow images to be displayed)
 		}
@@ -478,6 +480,14 @@ char get_input(){
 			printf("X_DIR_SUM = %d\n", sum_x);
 			printf("Y_DIR_SUM = %d\n", sum_y);
 		}
+
+		
+/*
+		if(DEBUG_MODE){
+			printf("X_DELTA_COM0 = %d\n", com_x_delta[0]);
+			printf("Y_DELTA_COM0 = %d\n", com_y_delta[0]);
+		}
+*/
 
 		//control logic starts here			
 		if(abs(sum_x) > X_SUM_THRESHOLD){
@@ -515,9 +525,6 @@ char get_input(){
 		//}
 		
 		
-
-
-
 	}
 
 	allocateOnDemand(&frame2_1C, capture_info.dim, IPL_DEPTH_8U, 1);
@@ -528,6 +535,7 @@ char get_input(){
 	//modulo addressing to identify current and last frame features(wouldn't need a loop, just ptr change)...
 	for(i = 0; i < MAX_FEATURES; i++)
 		memcpy(&frame2_features[i], &frame1_features[i], sizeof(CvPoint2D32f));
+
 
 	if(pieceRight){
 		input_char = INPUT_RIGHT;
@@ -655,25 +663,31 @@ int detect(IplImage* img_8uc1,IplImage* img_8uc3, int use_accel) {
 			}
 		}
 
+		if(NULL != defects[0])
+			nomdef = defects[0]->total;
+
+		if(DEBUG_MODE){
+			printf("nomdef = %d\n", nomdef);
+		}
 
 		CvConvexityDefect* defectArray;  
 
 		for(i = 0; i < 2; i++){
 			for(;defects[i];defects[i] = defects[i]->h_next){  
-				nomdef = defects[i]->total; //total number of detected defects
+				int temp_defects = defects[i]->total; //total number of detected defects
 
-				if(nomdef == 0)  
+				if(temp_defects == 0)  
 					continue;  
 
 				// Alloc memory for array of defects    
-				defectArray = (CvConvexityDefect*)malloc(sizeof(CvConvexityDefect)*nomdef);  
+				defectArray = (CvConvexityDefect*)malloc(sizeof(CvConvexityDefect)*temp_defects);  
 
 				// Get defect set.  
 				cvCvtSeqToArray(defects[i],defectArray, CV_WHOLE_SEQ);  
 
 				// Draw marks for all the defects in the image.  
 				if(DRAWING_ON){
-					for(int i=0; i<nomdef; i++){   
+					for(int i=0; i<temp_defects; i++){   
 						cvLine(img_8uc3, *(defectArray[i].start), *(defectArray[i].depth_point),CV_RGB(0,0,164),1, CV_AA, 0);  
 						cvCircle(img_8uc3, *(defectArray[i].depth_point), 5, CV_RGB(164,0,0), 2, 8,0);  
 						cvCircle(img_8uc3, *(defectArray[i].start), 5, CV_RGB(164,0,0), 2, 8,0);  
@@ -684,7 +698,7 @@ int detect(IplImage* img_8uc1,IplImage* img_8uc3, int use_accel) {
 					CvFont font;
 					cvInitFont(&font, CV_FONT_HERSHEY_DUPLEX, 0.5, 0.5, 0, 1, CV_AA);
 					cvPutText(img_8uc3, "defects | area", cvPoint(0,15), &font, cvScalar(0,0,128,0));
-					sprintf(txt,"%d",nomdef);
+					sprintf(txt,"%d",temp_defects);
 					cvPutText(img_8uc3, txt, cvPoint(10, 30 + 15 * i), &font, cvScalar(0, 0, 128, 0)); 
 					sprintf(txt,"%6.0f",areamax[i]);
 					cvPutText(img_8uc3, txt, cvPoint(50, 30 + 15 * i), &font, cvScalar(0, 0, 128, 0)); 
