@@ -23,6 +23,7 @@ enum v4l2_buf_type type;
 char* yuyv_buffer;
 char* frame_buffer[BUFF_COUNT];
 char* gray_buffer[BUFF_COUNT];
+char* skin_buffer[BUFF_COUNT];
 
 pthread_mutex_t frame_mutex[BUFF_COUNT];
 
@@ -161,6 +162,13 @@ int init_v4l2(void){
 			return -1;
 		}
 
+	//allocate buffers to store skin mask frames
+	for(i = 0; i < BUFF_COUNT; i++)
+		if(NULL == (skin_buffer[i] = (char*)calloc(1, capture_info.size/3))){
+			perror("init_v4l2: gray_buffer calloc failed");
+			return -1;
+		}
+
 	//initialize mutexes
 	for(i = 0; i < BUFF_COUNT; i++)
 		frame_mutex[i] = PTHREAD_MUTEX_INITIALIZER;
@@ -185,11 +193,11 @@ int v4l2_grab(void){
 //the frame. Destination frame is set as the Luma (Y) of the filtered capture
 //frame. i.e. pixels deemed skin are original Luma, pixels not skin are black.
 //NOTE: Destination is *now* a 1 channel image.
-int skin_detect(char* dst_ptr){
+int skin_detect(char* gray_ptr, char* skin_ptr){
 	int i,j;
 	int temp0;
 	int temp1;
-	unsigned char u1,v1;
+	unsigned char y1,u1,y2,v1;
 //	unsigned char u2,v2;
 //	unsigned char u3,v3;
 //	unsigned char u4,v4;
@@ -215,16 +223,22 @@ int skin_detect(char* dst_ptr){
 			u4 = *(pointer + temp0 + 13);
 			v4 = *(pointer + temp0 + 15);
 */
+			y1 = *(pointer + temp0);
+			y2 = *(pointer + temp0 + 2);
+			*(gray_ptr + temp1) = y1;
+			*(gray_ptr + temp1 + 1) = y2;
+			
+			//detect skin
 			if(u1 > Cb_SKIN_MIN && u1 < Cb_SKIN_MAX	
 				&& v1 > Cr_SKIN_MIN && v1 < Cr_SKIN_MAX){
 				//y1 = *(pointer + temp0);
 				//y2 = *(pointer + temp0 + 2);
-				*(dst_ptr + temp1) = *(pointer + temp0);
-				*(dst_ptr + temp1 + 1) = *(pointer + temp0 + 2);
+				*(skin_ptr + temp1) = y1;
+				*(skin_ptr + temp1 + 1) = y2;
 			}else{
 				//may be able to speed up by casting pointer to a an int* and using &= 0xFF00 ???
-				*(dst_ptr + temp1) = 0;
-				*(dst_ptr + temp1 + 1) = 0;
+				*(skin_ptr + temp1) = 0;
+				*(skin_ptr + temp1 + 1) = 0;
 			}
 		}
 	}
@@ -371,7 +385,7 @@ void* capture_frame(void* param){
 	v4l2_grab();
 	current_buffer = lock_frame_buffer(current_buffer);
 	//yuyv_2_rgb888(frame_buffer[current_buffer]);
-	skin_detect(gray_buffer[current_buffer]);
+	skin_detect(gray_buffer[current_buffer], skin_buffer[current_buffer]);
 	has_frame[current_buffer] = 1;
 	pthread_mutex_unlock(&frame_mutex[current_buffer]);
 #ifdef USE_MULTI_THREAD_CAPTURE
@@ -381,6 +395,7 @@ void* capture_frame(void* param){
 }
 
 IplImage* capImage = NULL;
+IplImage* skin_frame = NULL;
 //This function will only operate correctly if *only* ONE image is to be captured
 //and held at a time by a function that calls v4lQueryFrame. If multiple calls to
 //this function are made, all resulting pointers will reference the SAME image.
@@ -414,6 +429,11 @@ IplImage* v4lQueryFrame(){
 	if(NULL == capImage)
 		capImage = cvCreateImageHeader(capture_info.dim, IPL_DEPTH_8U, 1);
 
+	if(NULL == skin_frame)
+		skin_frame = cvCreateImageHeader(capture_info.dim, IPL_DEPTH_8U, 1);
+
+	skin_frame->imageData = skin_buffer[current_buffer];
+
 	capImage->nSize = sizeof(IplImage);
 	capImage->nChannels = 1;
 	capImage->depth = IPL_DEPTH_8U;
@@ -422,7 +442,7 @@ IplImage* v4lQueryFrame(){
 	capImage->width = capture_info.dim.width;
 	capImage->height = capture_info.dim.height;
 	capImage->roi = NULL;
-	capImage->maskROI = NULL;
+	capImage->maskROI = skin_frame;//skin_buffer[current_buffer];//NULL;
 	capImage->imageId = NULL;
 	capImage->tileInfo = NULL;
 	capImage->imageSize = capture_info.size / 3;

@@ -35,6 +35,7 @@ extern int use_accelerators;
 extern int USE_V4L_CAPTURE;
 
 IplImage* rawImage = NULL;
+IplImage* grayImage = NULL;
 IplImage* skinImage = NULL;
 IplImage* tmp_skinImage = NULL;
 IplImage* yuvImage = NULL;
@@ -55,6 +56,12 @@ int nomdef = 0;
 static const double pi = 3.14159265358979323846;
 //Used as a delay variable in order to prevent constant spinning of game pieces
 int fingerDelay = 0;
+
+//variables to hold center of mass of largest 2 contours
+int com_x[2];
+int com_y[2];
+int com_x_last[2] = {-1,-1};
+int com_y_last[2] = {-1,-1};
 
 //Delay calculation variables
 int nloop = 1;
@@ -161,6 +168,7 @@ void init_frame_processing(int calib_frames){
 	int nframes;
 
 	allocateOnDemand(&skinImage, capture_info.dim, IPL_DEPTH_8U, 1);
+	allocateOnDemand(&grayImage, capture_info.dim, IPL_DEPTH_8U, 1);
 	allocateOnDemand(&tmp_skinImage, capture_info.dim, IPL_DEPTH_8U, 1);
 
 	allocateOnDemand(&contour_frame, capture_info.dim, IPL_DEPTH_8U,3);
@@ -262,7 +270,7 @@ char get_input(){
 		capture_frame((void*)NULL); //if not multi-threaded must capture an image b4 query
 #endif
 		//rawImage = v4lQueryFrame();
-		skinImage = v4lQueryFrame();
+		grayImage = v4lQueryFrame();
 	}
 
 	if(DEBUG_MODE){
@@ -275,6 +283,8 @@ char get_input(){
 		return INPUT_NONE;	//error condition?
 	}
 
+	cvCopy(grayImage->maskROI, skinImage);
+
 	if(DEBUG_MODE){
 		gettimeofday(&timevalA, NULL);
 	}
@@ -284,7 +294,7 @@ char get_input(){
 	cvDilate(skinImage, skinImage, NULL, 1);
 	//use the morphological 'close' operation to remove small background noise.
 	cvDilate(skinImage, skinImage, NULL, 1);
-	//	cvErode(skinImage, skinImage, NULL, 1);
+	cvErode(skinImage, skinImage, NULL, 1);
 
 	if(DEBUG_MODE){
 		gettimeofday(&timevalB, NULL);
@@ -333,8 +343,9 @@ char get_input(){
 			canTurn = 1;
 		}
 	}
-	cvCopy(skinImage, frame1);
-	cvCopy(skinImage, frame1_1C);
+	
+	cvCopy(grayImage, frame1);
+	cvCopy(grayImage, frame1_1C);
 
 	if(NULL == frame1)
 		return INPUT_NONE;
@@ -353,8 +364,8 @@ char get_input(){
 			NULL,//temp_image,		//PARAM IGNORED
 			frame1_features,	//array to hold corners
 			&number_of_features,	//number of corners
-			0.05,	//quality
-			5,	//min euclidean dist between corners
+			0.001,	//quality
+			0,	//min euclidean dist between corners
 			//ImaskCodeBookCC,	//ROI mask
 			//skinImage,	//ROI mask
 			skinImage,
@@ -502,13 +513,11 @@ char get_input(){
 		//
 		//	}
 		//}
-	}
+		
+		
 
-	if(DRAWING_ON){
-		//Troubleshooting text for motion detection
-		CvFont font;
-		cvInitFont(&font, CV_FONT_HERSHEY_DUPLEX, 1.0, 1.0, 0, 1, CV_AA);
-		cvPutText(frame1, motionindic, cvPoint(50, 50), &font, cvScalar(0, 0, 128, 0)); 
+
+
 	}
 
 	allocateOnDemand(&frame2_1C, capture_info.dim, IPL_DEPTH_8U, 1);
@@ -551,6 +560,8 @@ int detect(IplImage* img_8uc1,IplImage* img_8uc3, int use_accel) {
 	int value;
 	int i = 0;
 	int j = 0;
+	CvSeq* contour_array;
+	CvPoint* ptr;
 
 	//REMEMBER!! findContours modifies the source image when extracting contours!!
 	int Nc = cvFindContours(img_8uc1,storage,&first_contour,sizeof(CvContour),CV_RETR_LIST);
@@ -623,10 +634,6 @@ int detect(IplImage* img_8uc1,IplImage* img_8uc3, int use_accel) {
 			}
 		}
 
-		CvSeq* contour_array;
-		CvPoint* ptr;
-		int com_x[2];
-		int com_y[2];
 		//attempt to calculate center of mass of points
 		for(i = 0; i < 2; i++){
 			if(areamax[i] > CONTOUR_MIN_AREA){
