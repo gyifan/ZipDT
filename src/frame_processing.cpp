@@ -550,6 +550,7 @@ int detect(IplImage* img_8uc1,IplImage* img_8uc3, int use_accel) {
 	double areamax[2] = {0, 0};
 	int value;
 	int i = 0;
+	int j = 0;
 
 	//REMEMBER!! findContours modifies the source image when extracting contours!!
 	int Nc = cvFindContours(img_8uc1,storage,&first_contour,sizeof(CvContour),CV_RETR_LIST);
@@ -614,13 +615,39 @@ int detect(IplImage* img_8uc1,IplImage* img_8uc3, int use_accel) {
 
 		for(i = 0; i < 2; i++){
 			if(areamax[i] > CONTOUR_MIN_AREA){
-				maxitem[i] = cvApproxPoly(maxitem[i], sizeof(CvContour), poly_storage[i], CV_POLY_APPROX_DP, 5, 0);
+				maxitem[i] = cvApproxPoly(maxitem[i], sizeof(CvContour), poly_storage[i], CV_POLY_APPROX_DP, 10, 0);
 				CvPoint pt0;
 				CvSeq* hull;
 				hull = cvConvexHull2(maxitem[i], 0, CV_CLOCKWISE, 0);
 				defects[i] = cvConvexityDefects(maxitem[i], hull, defect_storage[i]);
 			}
 		}
+
+		CvSeq* contour_array;
+		CvPoint* ptr;
+		int com_x[2];
+		int com_y[2];
+		//attempt to calculate center of mass of points
+		for(i = 0; i < 2; i++){
+			if(areamax[i] > CONTOUR_MIN_AREA){
+				contour_array = (CvSeq*)malloc(sizeof(CvSeq) * maxitem[i]->total);
+				cvCvtSeqToArray(maxitem[i],contour_array, CV_WHOLE_SEQ);
+				
+				com_x[i] = 0;
+				com_y[i] = 0;
+				for(j = 0; j < maxitem[i]->total; j++){
+					ptr = CV_GET_SEQ_ELEM(CvPoint, maxitem[i], j);
+					com_x[i] += ptr->x;
+					com_y[i] += ptr->y;
+				}
+
+				com_x[i] /= maxitem[i]->total;
+				com_y[i] /= maxitem[i]->total;
+
+				free(contour_array);
+			}
+		}
+
 
 		CvConvexityDefect* defectArray;  
 
@@ -647,13 +674,16 @@ int detect(IplImage* img_8uc1,IplImage* img_8uc3, int use_accel) {
 					} 
 
 					char txt[50];
-					//txti[0]='0'+nomdef-1;
-					sprintf(txt,"%d",nomdef);
 					CvFont font;
-					cvInitFont(&font, CV_FONT_HERSHEY_DUPLEX, 1.0, 1.0, 0, 1, CV_AA);
-					cvPutText(img_8uc3, txt, cvPoint(50, 50 + 50 * i), &font, cvScalar(0, 0, 128, 0)); 
-					sprintf(txt,"%.0f",areamax[i]);
-					cvPutText(img_8uc3, txt, cvPoint(100, 50 + 50 * i), &font, cvScalar(0, 0, 128, 0)); 
+					cvInitFont(&font, CV_FONT_HERSHEY_DUPLEX, 0.5, 0.5, 0, 1, CV_AA);
+					cvPutText(img_8uc3, "defects | area", cvPoint(0,15), &font, cvScalar(0,0,128,0));
+					sprintf(txt,"%d",nomdef);
+					cvPutText(img_8uc3, txt, cvPoint(10, 30 + 15 * i), &font, cvScalar(0, 0, 128, 0)); 
+					sprintf(txt,"%6.0f",areamax[i]);
+					cvPutText(img_8uc3, txt, cvPoint(50, 30 + 15 * i), &font, cvScalar(0, 0, 128, 0)); 
+					cvPutText(img_8uc3, "center of mass(x,y)", cvPoint(0, 60), &font, cvScalar(0, 0, 128, 0)); 
+					sprintf(txt,"%d,%d",com_x[i],com_y[i]);
+					cvPutText(img_8uc3, txt, cvPoint(0, 75 + 15 * i), &font, cvScalar(0, 0, 128, 0)); 
 				}
 
 				// Free memory.         
