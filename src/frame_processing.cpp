@@ -169,6 +169,7 @@ int init_accel(int use_accel){
 void init_frame_processing(int calib_frames){
 	int nframes;
 
+	allocateOnDemand(&rawImage, capture_info.dim, IPL_DEPTH_8U, 3);
 	allocateOnDemand(&skinImage, capture_info.dim, IPL_DEPTH_8U, 1);
 	allocateOnDemand(&grayImage, capture_info.dim, IPL_DEPTH_8U, 1);
 	allocateOnDemand(&tmp_skinImage, capture_info.dim, IPL_DEPTH_8U, 1);
@@ -237,6 +238,10 @@ cvCopy(ImaskCodeBook,ImaskCodeBookCC);
 	}
 }
 
+IplImage* hsv_image = NULL;
+CvScalar  hsv_min = cvScalar(0, 30, 80, 0);
+CvScalar  hsv_max = cvScalar(20, 150, 255, 0);
+
 char get_input(){
 	int sum_x = 0;
 	int sum_y = 0;
@@ -265,14 +270,24 @@ char get_input(){
 		gettimeofday(&timevalA, NULL);
 	}
 
-	if(!USE_V4L_CAPTURE)
+	if(!USE_V4L_CAPTURE){
 		rawImage = cvQueryFrame(capture);
-	else{
+
+		if(rawImage == NULL)
+			return INPUT_NONE;
+
+		cvCvtColor(rawImage, grayImage, CV_BGR2GRAY);
+		allocateOnDemand(&hsv_image, capture_info.dim, IPL_DEPTH_8U, 3);
+		//doing skin detection
+		cvCvtColor(rawImage, hsv_image, CV_BGR2HSV);
+		cvInRangeS(hsv_image, hsv_min, hsv_max, skinImage);
+
+	}else{
 #ifndef USE_MULTI_THREAD_CAPTURE
 		capture_frame((void*)NULL); //if not multi-threaded must capture an image b4 query
 #endif
-		//rawImage = v4lQueryFrame();
 		grayImage = v4lQueryFrame();
+		cvCopy(grayImage->maskROI, skinImage);
 	}
 
 	if(DEBUG_MODE){
@@ -281,11 +296,7 @@ char get_input(){
 		printf("capture frame time[us] = %d\n", timevalC.tv_sec * 1000000 + timevalC.tv_usec);
 	}
 
-	if(NULL == skinImage){
-		return INPUT_NONE;	//error condition?
-	}
 
-	cvCopy(grayImage->maskROI, skinImage);
 
 	if(DEBUG_MODE){
 		gettimeofday(&timevalA, NULL);
