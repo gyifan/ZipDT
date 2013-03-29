@@ -14,7 +14,6 @@
 #define	ACCEL_SET_ALL		'a'
 #define ACCEL_SET_AREA		'c'	//use contour area accelerator
 #define CAPTURE_RESOLUTION	'r'
-#define CALIB_FRAMES		'f'
 #define NO_V4L_CAPTURE		'N'
 #define USE_DRAWING			'G'
 #define KEYBOARD_INPUT		'K'
@@ -22,6 +21,6 @@
 
 //could not come up with an elegand way to write this.
 //must append character options above to list manually.
-#define PARAM_STRING "+l:acr:f:NGKDh"
+#define PARAM_STRING "+l:acr:NGKDh"
 
 #endif

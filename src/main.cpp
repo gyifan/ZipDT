@@ -93,7 +93,6 @@ void usage(char* cmd){
 	printf("\t\t\t720\tcapture frames at 1280x720\n");
 	printf("\t\t\t1080\tcapture frames at 1920x1080\n");
 	printf("\n<FRAME PROCESSING>\n");
-	printf("\t-f <COUNT>\tthe number of frames to use for initial calibration. Default = 100.\n");
 	printf("\n<GAME BEHAVIOR>\n");
 	printf("Change how game statistics are initialized.\n");
 	printf("\t-l <LEVEL>\tSet the starting level of the game.\n");
@@ -140,10 +139,6 @@ int main(int argc, char** argv){
 					usage(argv[0]);
 					return -1;
 				}
-				break;
-
-			case CALIB_FRAMES:
-				calib_frames = atoi(optarg);
 				break;
 
 			case NO_V4L_CAPTURE:

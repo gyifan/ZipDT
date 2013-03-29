@@ -53,7 +53,7 @@ $(foreach directory,$(PATHS_TO_ARM_SHARED_LIBS),-L$(directory)) \
 else 
 
 $(info )
-$(info "Building $(PROJECT_NAME) for x86 architecture")
+$(info "Building $(PROJECT_NAME) for HOST architecture")
 $(info )
 
 CXX=$(NATIVE_CXX)
