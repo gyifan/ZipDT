@@ -233,8 +233,6 @@ cvCopy(ImaskCodeBook,ImaskCodeBookCC);
 		cvMoveWindow("Detected Skin",480,0);
 		cvNamedWindow("Contours", CV_WINDOW_AUTOSIZE);
 		cvMoveWindow("Contours", 640,480);
-		cvNamedWindow("Optical Flow", CV_WINDOW_AUTOSIZE);
-		cvMoveWindow("Optical Flow", 480, 480);
 	}
 }
 
