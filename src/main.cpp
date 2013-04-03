@@ -86,6 +86,7 @@ void usage(char* cmd){
 	printf("If no accelerator parameter is passed, no accelerators are utilized.\n");
 	printf("\t-a\tuse all hardware accelerators\n");
 	printf("\t-c\tuse cvFindContourArea hardware accelerator\n");
+	printf("\t-e\tuse cvErode hardware accelerator\n");
 	printf("\n<CAPTURE RESOLUTION>\n");
 	printf("If no resolution parameter is passed, the program defaults to 640x480 frame captures.\n");
 	printf("\t-r <RESOLUTION>\n");
@@ -131,6 +132,9 @@ int main(int argc, char** argv){
 				break;
 			case ACCEL_SET_AREA:
 				use_accelerators |= USE_ACCEL_AREA;
+				break;
+			case ACCEL_SET_ERODE:
+				use_accelerators |= USE_ACCEL_ERODE;
 				break;
 
 			case CAPTURE_RESOLUTION:
