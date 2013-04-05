@@ -159,7 +159,7 @@ int init_accel(int use_accel){
 				return -1;
 			}
 		}
-		
+
 		//open /dev/mem
 		printf("Opening /dev/mem\n");
 		if(-1 == (fd_devmem = open("/dev/mem", O_RDWR | O_SYNC))){
@@ -263,6 +263,37 @@ void store_image_data_to_file(IplImage *img, const char *filename){
 	close(output_fd);
 }
 
+void hwErode(IplImage *src, IplImage *dst){
+	int temp;
+	//set row and column registers. this could be done in initialization.
+	if(-1 == ioctl(fd_erode_accel, SELECT_REG, ROWS_REG)){
+		perror("ioctl failed");
+		return -1;
+	}
+	write(fd_erode_accel, &(capture_info.dim.height), 4);
+
+	if(-1 == ioctl(fd_erode_accel, SELECT_REG, COLS_REG)){
+		perror("ioctl failed");
+		return -1;
+	}
+	write(fd_erode_accel, &(capture_info.dim.width), 4);
+
+	//copy frame to be eroded into src frame buffer
+	memcpy(frame_buffer_1, src->imageData, src->imageSize);
+
+	//start the accelerator
+	if(-1 == ioctl(fd_erode_accel, ACCEL_START)){
+		perror("ioctl failed");
+		return -1;
+	}
+
+	//do a blocking read to wait for accelerator to finish
+	read(fd_erode_accel, &temp, 4);
+
+	//retrieve the eroded image.
+	memcpy(dst->imageData, frame_buffer_2, dst->imageSize);
+}
+
 
 IplImage* hsv_image = NULL;
 CvScalar  hsv_min = cvScalar(0, 30, 80, 0);
@@ -288,6 +319,9 @@ char get_input(){
 	pieceRight = false;
 	pieceLeft = false;
 	pieceDown = false;
+
+//	static int test_count = -1;
+//	test_count++;
 
 	//The Optical Flow window is created to visualize the output of the optical flow algorithm
 	//The size of this winodw is automatically adjusted in order to match the previously determined window width and height
@@ -323,43 +357,17 @@ char get_input(){
 		printf("capture frame time[us] = %d\n", timevalC.tv_sec * 1000000 + timevalC.tv_usec);
 	}
 
-
-//	store_image_data_to_file(skinImage, "./skin_before_erode.dat");
-
+/*
+	if(test_count > 20)
+		store_image_data_to_file(skinImage, "./skin_before_erode.dat");
+*/
 	if(DEBUG_MODE){
 		gettimeofday(&timevalA, NULL);
 	}
 
 	//use the morphological 'open' operation to remove small foreground noise.
 	if(use_accels & USE_ACCEL_ERODE){
-		//set row and column registers. this could be done in initialization.
-		if(-1 == ioctl(fd_erode_accel, SELECT_REG, ROWS_REG)){
-			perror("ioctl failed");
-			return -1;
-		}
-		write(fd_erode_accel, &(capture_info.dim.height), 4);
-
-		if(-1 == ioctl(fd_erode_accel, SELECT_REG, COLS_REG)){
-			perror("ioctl failed");
-			return -1;
-		}
-		write(fd_erode_accel, &(capture_info.dim.width), 4);
-
-		//copy frame to be eroded into src frame buffer
-		memcpy(frame_buffer_1, skinImage->imageData, skinImage->imageSize);
-		
-		//start the accelerator
-		if(-1 == ioctl(fd_erode_accel, ACCEL_START)){
-			perror("ioctl failed");
-			return -1;
-		}
-
-		//do a blocking read to wait for accelerator to finish
-		read(fd_erode_accel, &temp, 4);
-	
-		//retrieve the eroded image.
-		memcpy(skinImage->imageData, frame_buffer_2, skinImage->imageSize);
-
+		hwErode(skinImage, skinImage);
 	}else{
 		cvErode(skinImage, skinImage, NULL, 1);
 	}
@@ -369,18 +377,51 @@ char get_input(){
 		timersub(&timevalB, &timevalA, &timevalC);
 		printf("erode frame time[us] = %d\n", timevalC.tv_sec * 1000000 + timevalC.tv_usec);
 	}
+/*
+	if(test_count > 20)
+		store_image_data_to_file(skinImage, "./skin_after_erode.dat");
+*/
 
-//	store_image_data_to_file(skinImage, "./skin_after_erode.dat");
-
-//	exit(-1);
-
+	if(DEBUG_MODE){
+		gettimeofday(&timevalA, NULL);
+	}
 
 	cvDilate(skinImage, skinImage, NULL, 1);
 
+	if(DEBUG_MODE){
+		gettimeofday(&timevalB, NULL);
+		timersub(&timevalB, &timevalA, &timevalC);
+		printf("dilate frame time[us] = %d\n", timevalC.tv_sec * 1000000 + timevalC.tv_usec);
+	}
+/*
+	if(test_count > 20)
+		store_image_data_to_file(skinImage, "./skin_after_dilate.dat");
+*/
 	//use the morphological 'close' operation to remove small background noise.
-	//cvDilate(skinImage, skinImage, NULL, 1);
-	//cvErode(skinImage, skinImage, NULL, 1);
+	if(DEBUG_MODE){
+		gettimeofday(&timevalA, NULL);
+	}
 
+	cvDilate(skinImage, skinImage, NULL, 1);
+
+	if(use_accels & USE_ACCEL_ERODE){
+		hwErode(skinImage, skinImage);
+	}else{
+		cvErode(skinImage, skinImage, NULL, 1);
+	}
+
+	if(DEBUG_MODE){
+		gettimeofday(&timevalB, NULL);
+		timersub(&timevalB, &timevalA, &timevalC);
+		printf("'close' frame time[us] = %d\n", timevalC.tv_sec * 1000000 + timevalC.tv_usec);
+	}
+/*
+	if(test_count > 20)
+		store_image_data_to_file(skinImage, "./skin_after_close.dat");
+
+	if(test_count > 20)
+		exit(-1);
+*/
 
 	//reset the contour frame image.
 	memset(contour_frame->imageData, 0, contour_frame->imageSize);
@@ -457,32 +498,32 @@ char get_input(){
 	}
 
 
-/*
+	/*
 	//control logic starts here			
 	if(abs(sum_x) > X_SUM_THRESHOLD){
-		if(sum_x < 0){
-			if(rightcount == 0){
-				leftcount++;
-			}else{
-				leftcount = 0;
-				rightcount = 0;
-			}
-		}else{
-			if(leftcount == 0){
-				rightcount++;
-			}else{
-				leftcount = 0;
-				rightcount = 0;
-			}
-		}
+	if(sum_x < 0){
+	if(rightcount == 0){
+	leftcount++;
+	}else{
+	leftcount = 0;
+	rightcount = 0;
+	}
+	}else{
+	if(leftcount == 0){
+	rightcount++;
+	}else{
+	leftcount = 0;
+	rightcount = 0;
+	}
+	}
 	}
 
 	if(leftcount > X_MOTION_THRESHOLD){
-		pieceLeft = true;
-		leftcount = 0;
+	pieceLeft = true;
+	leftcount = 0;
 	}else if(rightcount > X_MOTION_THRESHOLD){
-		pieceRight = true;
-		rightcount = 0;
+	pieceRight = true;
+	rightcount = 0;
 	}
 
 	//if(abs(sum_y) > Y_SUM_THRESHOLD){
@@ -492,22 +533,22 @@ char get_input(){
 	//
 	//	}
 	//}
-*/
+	*/
 
 	if((-com_x_delta[0]) > COM_X_DELTA_THRESHOLD){
-			if(rightcount == 0){
-				leftcount++;
-			}else{
-				leftcount = 0;
-				rightcount = 0;
-			}
+		if(rightcount == 0){
+			leftcount++;
+		}else{
+			leftcount = 0;
+			rightcount = 0;
+		}
 	}else if(com_x_delta[0] > COM_X_DELTA_THRESHOLD){
-			if(leftcount == 0){
-				rightcount++;
-			}else{
-				leftcount = 0;
-				rightcount = 0;
-			}
+		if(leftcount == 0){
+			rightcount++;
+		}else{
+			leftcount = 0;
+			rightcount = 0;
+		}
 	}
 
 	if(leftcount > COM_X_MOTION_THRESHOLD){

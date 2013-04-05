@@ -190,8 +190,8 @@ int v4l2_grab(void){
 }
 
 //uses captured yuyv image's Cb(U) and Cr(V) channels to detect skin tones in
-//the frame. Destination frame is set as the Luma (Y) of the filtered capture
-//frame. i.e. pixels deemed skin are original Luma, pixels not skin are black.
+//the frame. Destination is a binary version of the source image's luma channel
+//i.e. pixels deemed skin are white(255), pixels not skin are black(0).
 //NOTE: Destination is *now* a 1 channel image.
 int skin_detect(char* gray_ptr, char* skin_ptr){
 	int i,j;
@@ -223,8 +223,8 @@ int skin_detect(char* gray_ptr, char* skin_ptr){
 			u4 = *(pointer + temp0 + 13);
 			v4 = *(pointer + temp0 + 15);
 */
-			y1 = *(pointer + temp0);
-			y2 = *(pointer + temp0 + 2);
+			//y1 = *(pointer + temp0);
+			//y2 = *(pointer + temp0 + 2);
 			*(gray_ptr + temp1) = y1;
 			*(gray_ptr + temp1 + 1) = y2;
 			
@@ -233,8 +233,11 @@ int skin_detect(char* gray_ptr, char* skin_ptr){
 				&& v1 > Cr_SKIN_MIN && v1 < Cr_SKIN_MAX){
 				//y1 = *(pointer + temp0);
 				//y2 = *(pointer + temp0 + 2);
-				*(skin_ptr + temp1) = y1;
-				*(skin_ptr + temp1 + 1) = y2;
+				
+				//*(skin_ptr + temp1) = y1;
+				//*(skin_ptr + temp1 + 1) = y2;
+				*(skin_ptr + temp1) = 255;
+				*(skin_ptr + temp1 + 1) = 255;
 			}else{
 				//may be able to speed up by casting pointer to a an int* and using &= 0xFF00 ???
 				*(skin_ptr + temp1) = 0;
