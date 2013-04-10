@@ -86,6 +86,7 @@ void usage(char* cmd){
 	printf("If no accelerator parameter is passed, no accelerators are utilized.\n");
 	printf("\t-a\tuse all hardware accelerators\n");
 	printf("\t-c\tuse cvFindContourArea hardware accelerator\n");
+	printf("\t-e\tuse cvErode hardware accelerator\n");
 	printf("\n<CAPTURE RESOLUTION>\n");
 	printf("If no resolution parameter is passed, the program defaults to 640x480 frame captures.\n");
 	printf("\t-r <RESOLUTION>\n");
@@ -111,6 +112,7 @@ int main(int argc, char** argv){
 	int param;
 	extern char* optarg;
 	extern int optind, opterr, optopt;
+	extern int nomdef;
 #ifdef USE_MULTI_THREAD_CAPTURE
 	pthread_t capture_thread;
 #endif
@@ -131,6 +133,9 @@ int main(int argc, char** argv){
 				break;
 			case ACCEL_SET_AREA:
 				use_accelerators |= USE_ACCEL_AREA;
+				break;
+			case ACCEL_SET_ERODE:
+				use_accelerators |= USE_ACCEL_ERODE;
 				break;
 
 			case CAPTURE_RESOLUTION:
@@ -234,7 +239,7 @@ int main(int argc, char** argv){
 			temp = timC.tv_usec + timC.tv_sec * 1000000;
 			stats.data_a = temp;	//total microseconds
 			stats.data_b = 1000000/temp;	//fps
-
+			stats.data_d = nomdef;
 			if(DEBUG_MODE)
 				printf("Total time[us] %d\n", temp);
 		}
@@ -244,10 +249,12 @@ int main(int argc, char** argv){
 		if(!DEBUG_MODE){
 			//Map specific motion to an existing control in the game
 			if(input_char == INPUT_RIGHT){
+				strcpy(stats.data_c, "Right");
 				if(0 == move_right()){
 					board_changed = 1;
 				}
 			}else if(input_char == INPUT_LEFT){
+				strcpy(stats.data_c, "Left");
 				if(0 == move_left()){
 					board_changed = 1;
 				}

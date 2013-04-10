@@ -24,6 +24,7 @@
 
 #include "main.h"
 #include "contour_area.h"
+#include "erosion.h"
 #include "game_behavior.h"
 #include "frame_grabber.h"
 #include "accelerators.h"
@@ -31,8 +32,11 @@
 
 extern int DEBUG_MODE;
 extern int DRAWING_ON;
-extern int use_accelerators;
 extern int USE_V4L_CAPTURE;
+extern struct capture_data capture_info;
+
+int use_accels;
+double comLoc= 0.0;
 
 IplImage* rawImage = NULL;
 IplImage* grayImage = NULL;
@@ -119,7 +123,9 @@ struct timeval timevalC;
 //accelerator variables
 int fd_devmem;
 int fd_area_accel;
+int fd_erode_accel;
 void* frame_buffer_1;
+void* frame_buffer_2;
 
 // This function will allocate space for images.
 void allocateOnDemand(IplImage **img, CvSize size, int depth, int channels){
@@ -137,16 +143,25 @@ void allocateOnDemand(IplImage **img, CvSize size, int depth, int channels){
 // Initialize hardware accelerators specified by the use_accel parameter. This
 // parameter should be set using constants defined in accelerator header file.
 int init_accel(int use_accel){
+	use_accels = use_accel;
 	if(use_accel != USE_ACCEL_NONE){
 
 		//open contour area accelerator device file
 		if(use_accel & USE_ACCEL_AREA){
-			if(-1 == (fd_area_accel = open(DEV_PATH, O_RDWR | O_SYNC))){
+			if(-1 == (fd_area_accel = open(AREA_DEV_PATH, O_RDWR | O_SYNC))){
 				perror("open failed");
 				return -1;
 			}
 		}
 
+		//open erosion accelerator device file
+		if(use_accel & USE_ACCEL_ERODE){
+			if(-1 == (fd_erode_accel = open(ERODE_DEV_PATH, O_RDWR | O_SYNC))){
+				perror("open failed");
+				return -1;
+			}
+		}
+		
 		//open /dev/mem
 		printf("Opening /dev/mem\n");
 		if(-1 == (fd_devmem = open("/dev/mem", O_RDWR | O_SYNC))){
@@ -160,6 +175,10 @@ int init_accel(int use_accel){
 			return -1;
 		}
 
+		if(-1 == (int)(frame_buffer_2 = mmap(0,FRAME_SIZE,PROT_READ|PROT_WRITE,MAP_SHARED,fd_devmem,FRAME_2_ADDRESS))){
+			perror("mmap failed");
+			return -1;
+		}
 	}
 	return 0;
 }
@@ -230,11 +249,22 @@ cvCopy(ImaskCodeBook,ImaskCodeBookCC);
 */
 	if(DRAWING_ON){
 		cvNamedWindow("Detected Skin", CV_WINDOW_AUTOSIZE);
-		cvMoveWindow("Detected Skin",480,0);
+		cvMoveWindow("Detected Skin",479,0);
 		cvNamedWindow("Contours", CV_WINDOW_AUTOSIZE);
 		cvMoveWindow("Contours", 640,480);
 	}
 }
+
+//dirty function for debugging hardware accelerators. REMOVE THIS IN FINAL VERSION
+void store_image_data_to_file(IplImage *img, const char *filename){
+	int output_fd;
+	output_fd = open(filename, O_CREAT | O_TRUNC | O_WRONLY);
+
+	printf("store_image_data_to_file wrote %d bytes to %s\n", write(output_fd, img->imageData, img->imageSize), filename);
+
+	close(output_fd);
+}
+
 
 IplImage* hsv_image = NULL;
 CvScalar  hsv_min = cvScalar(0, 30, 80, 0);
@@ -249,6 +279,7 @@ char get_input(){
 	int temp_y = 0;
 	int number_of_features;
 	int i = 0;
+	int temp;
 	char input_char = INPUT_NONE;
 	CvPoint p,q;
 	bool turnaround;
@@ -295,23 +326,63 @@ char get_input(){
 	}
 
 
+//	store_image_data_to_file(skinImage, "./skin_before_erode.dat");
 
 	if(DEBUG_MODE){
 		gettimeofday(&timevalA, NULL);
 	}
 
 	//use the morphological 'open' operation to remove small foreground noise.
-	cvErode(skinImage, skinImage, NULL, 1);
-	cvDilate(skinImage, skinImage, NULL, 1);
-	//use the morphological 'close' operation to remove small background noise.
-	cvDilate(skinImage, skinImage, NULL, 1);
-	cvErode(skinImage, skinImage, NULL, 1);
+	if(use_accels & USE_ACCEL_ERODE){
+		//set row and column registers. this could be done in initialization.
+		if(-1 == ioctl(fd_erode_accel, SELECT_REG, ROWS_REG)){
+			perror("ioctl failed");
+			return -1;
+		}
+		write(fd_erode_accel, &(capture_info.dim.height), 4);
+
+		if(-1 == ioctl(fd_erode_accel, SELECT_REG, COLS_REG)){
+			perror("ioctl failed");
+			return -1;
+		}
+		write(fd_erode_accel, &(capture_info.dim.width), 4);
+
+		//copy frame to be eroded into src frame buffer
+		memcpy(frame_buffer_1, skinImage->imageData, skinImage->imageSize);
+		
+		//start the accelerator
+		if(-1 == ioctl(fd_erode_accel, ACCEL_START)){
+			perror("ioctl failed");
+			return -1;
+		}
+
+		//do a blocking read to wait for accelerator to finish
+		read(fd_erode_accel, &temp, 4);
+	
+		//retrieve the eroded image.
+		memcpy(skinImage->imageData, frame_buffer_2, skinImage->imageSize);
+
+	}else{
+		cvErode(skinImage, skinImage, NULL, 1);
+	}
 
 	if(DEBUG_MODE){
 		gettimeofday(&timevalB, NULL);
 		timersub(&timevalB, &timevalA, &timevalC);
-		printf("open and close frame time[us] = %d\n", timevalC.tv_sec * 1000000 + timevalC.tv_usec);
+		printf("erode frame time[us] = %d\n", timevalC.tv_sec * 1000000 + timevalC.tv_usec);
 	}
+
+//	store_image_data_to_file(skinImage, "./skin_after_erode.dat");
+
+//	exit(-1);
+
+
+	cvDilate(skinImage, skinImage, NULL, 1);
+
+	//use the morphological 'close' operation to remove small background noise.
+	//cvDilate(skinImage, skinImage, NULL, 1);
+	//cvErode(skinImage, skinImage, NULL, 1);
+
 
 	//reset the contour frame image.
 	memset(contour_frame->imageData, 0, contour_frame->imageSize);
@@ -321,7 +392,7 @@ char get_input(){
 		gettimeofday(&timevalA, NULL);
 	}
 
-	if(use_accelerators & USE_ACCEL_AREA){
+	if(use_accels & USE_ACCEL_AREA){
 		if(detect(tmp_skinImage, contour_frame, 1)){
 			printf("detect failed\n");
 		}		
@@ -424,6 +495,8 @@ char get_input(){
 	//	}
 	//}
 */
+
+	comLoc = (double)com_x[0]/(double)capture_info.dim.width;
 
 	if((-com_x_delta[0]) > COM_X_DELTA_THRESHOLD){
 			if(rightcount == 0){

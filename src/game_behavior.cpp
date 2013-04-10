@@ -12,6 +12,7 @@ extern int board[BOARD_HEIGHT][BOARD_WIDTH];
 extern struct game_stats stats;
 extern int game_over;		//1=game ended. 0=still playing.
 extern int board_changed;		//1= board changed, 0=board is same. redraw board if it changed, else do nothing.
+extern double comLoc;
 extern struct current_piece piece;	//piece that user is controlling
 extern struct timeval last_time;
 extern struct timeval current_time;
@@ -50,14 +51,16 @@ void init_game_stats(){
 	stats.level = 0;
 	stats.data_a = 0;
 	stats.data_b = 0;
-	stats.data_c = 0;
+	//stats.data_c = NULL;
 	stats.data_d = 0;
 	stats.data_e = 0;
 	stats.data_f = 0;
 	strcpy(stats.msg_a, "Execution time [us]:");
 	strcpy(stats.msg_b, "Total frame throughput [fps]:");
-	stats.msg_c[0] = '\0';
-	stats.msg_d[0] = '\0';
+	strcpy(stats.msg_c, "Direction:");
+	strcpy(stats.msg_d, "Number of defects:");
+	//stats.msg_c[0] = '\0';
+	//stats.msg_d[0] = '\0';
 	stats.msg_e[0] = '\0';
 	stats.msg_f[0] = '\0';
 }
@@ -487,7 +490,7 @@ void print_board_curses(){
 	}
 	if(strnlen(stats.msg_c, MAX_MSG_LEN) != 0){
 		mvprintw(y+10,x,stats.msg_c);
-		mvprintw(y+11,x,"%d",stats.data_c);
+		mvprintw(y+11,x,/*"%d",*/stats.data_c);
 	}
 	if(strnlen(stats.msg_d, MAX_MSG_LEN) != 0){
 		mvprintw(y+12,x,stats.msg_d);
@@ -501,6 +504,11 @@ void print_board_curses(){
 		mvprintw(y+14,x,stats.msg_f);
 		mvprintw(y+15,x,"%d",stats.data_f);
 	}
+	//magic numbers are used for centering locator
+	mvprintw(y+22,(BOARD_WIDTH-comLoc*BOARD_WIDTH)+6,"%d",stats.data_f);
+	mvprintw(y+22,5,"%c","1");
+	mvprintw(y+22,16,"%c","1");
+
 
 	refresh();
 }
