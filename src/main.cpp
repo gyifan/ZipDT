@@ -28,6 +28,7 @@
 #include "accelerators.h"
 
 int DEBUG_MODE = 0;
+int TESTING_MODE = 0;
 int USE_KEYBOARD = 0;
 int DRAWING_ON = 0;
 int USE_V4L_CAPTURE = 1;
@@ -55,6 +56,8 @@ clock_t t;
 struct timeval timA;
 struct timeval timB;
 struct timeval timC;
+struct timeval timD;
+struct timeval timE;
 
 CvCapture* capture = NULL;
 
@@ -86,6 +89,7 @@ void usage(char* cmd){
 	printf("If no accelerator parameter is passed, no accelerators are utilized.\n");
 	printf("\t-a\tuse all hardware accelerators\n");
 	printf("\t-c\tuse cvFindContourArea hardware accelerator\n");
+	printf("\t-e\tuse cvErode hardware accelerator\n");
 	printf("\n<CAPTURE RESOLUTION>\n");
 	printf("If no resolution parameter is passed, the program defaults to 640x480 frame captures.\n");
 	printf("\t-r <RESOLUTION>\n");
@@ -100,7 +104,8 @@ void usage(char* cmd){
 	printf("\t-N\tUse standard opencv capture to acquire frames. Disables lower-level V4L capture.\n");
 	printf("\t-G\tEnable High GUI displays.\n");
 	printf("\t-K\tDisable image processing for input and use i,j,k,l,<SPACE> to control game.\n");
-	printf("\t-D\tDebug mode. Display timing information and other data.");
+	printf("\t-D\tDebug mode. Display timing information and other data.\n");
+	printf("\t-M\tTesting mode. Display timing and response information.");
 	printf("\n");
 }
 
@@ -111,6 +116,7 @@ int main(int argc, char** argv){
 	int param;
 	extern char* optarg;
 	extern int optind, opterr, optopt;
+	extern int nomdef;
 #ifdef USE_MULTI_THREAD_CAPTURE
 	pthread_t capture_thread;
 #endif
@@ -132,6 +138,9 @@ int main(int argc, char** argv){
 			case ACCEL_SET_AREA:
 				use_accelerators |= USE_ACCEL_AREA;
 				break;
+			case ACCEL_SET_ERODE:
+				use_accelerators |= USE_ACCEL_ERODE;
+				break;
 
 			case CAPTURE_RESOLUTION:
 				if(init_capture_data(optarg)){
@@ -148,6 +157,11 @@ int main(int argc, char** argv){
 			case SET_DEBUG_MODE:
 				printf("\nGame has been disabled for debug mode.\n\n");
 				DEBUG_MODE = 1;
+				break;
+
+			case SET_TESTING_MODE:
+				printf("\nTesting mode has been enabled.\n\n");
+				TESTING_MODE = 1;
 				break;
 
 			case USE_DRAWING:
@@ -202,7 +216,7 @@ int main(int argc, char** argv){
 	}
 
 	//disable curses display in debug mode
-	if(!DEBUG_MODE)
+	if(!DEBUG_MODE && !TESTING_MODE)
 		init_curses_mode();
 
 	//do not initialize frame processing if it is not being used.
@@ -234,20 +248,42 @@ int main(int argc, char** argv){
 			temp = timC.tv_usec + timC.tv_sec * 1000000;
 			stats.data_a = temp;	//total microseconds
 			stats.data_b = 1000000/temp;	//fps
-
+			stats.data_d = nomdef;
 			if(DEBUG_MODE)
 				printf("Total time[us] %d\n", temp);
+			if(TESTING_MODE){
+				if(input_char == INPUT_RIGHT){
+					gettimeofday(&timB,NULL);
+					timersub(&timB, &timA, &timC);
+					temp = timC.tv_usec + timC.tv_sec * 1000000;
+					printf("Right Input[us] %d\n", temp);
+				}
+				if(input_char == INPUT_LEFT){
+					gettimeofday(&timB,NULL);
+					timersub(&timB, &timA, &timC);
+					temp = timC.tv_usec + timC.tv_sec * 1000000;
+					printf("Left Input[us] %d\n", temp);
+				}
+				if(input_char == INPUT_SPIN_CW){
+					gettimeofday(&timB,NULL);
+					timersub(&timB, &timA, &timC);
+					temp = timE.tv_usec + timE.tv_sec * 1000000;
+					printf("Left Input[us] %d\n", temp);
+				}
+			}
 		}
 
 		//disable game behavior in debug mode to allow image processing functions
 		//to be called forever
-		if(!DEBUG_MODE){
+		if(!DEBUG_MODE && !TESTING_MODE){
 			//Map specific motion to an existing control in the game
 			if(input_char == INPUT_RIGHT){
+				strcpy(stats.data_c, "Right");
 				if(0 == move_right()){
 					board_changed = 1;
 				}
 			}else if(input_char == INPUT_LEFT){
+				strcpy(stats.data_c, "Left");
 				if(0 == move_left()){
 					board_changed = 1;
 				}

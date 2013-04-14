@@ -3,6 +3,7 @@
 
 #include <linux/ioctl.h>
 
+#define AREA_DEV_PATH	"/dev/contour_area"
 #define DEV_NAME	"contour_area"
 #define DEV_PATH	"/dev/"DEV_NAME
 #define DEV_MAJOR	64

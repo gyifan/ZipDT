@@ -36,7 +36,7 @@ struct game_stats{
 	char msg_f[MAX_MSG_LEN];
 	int data_a;
 	int data_b;
-	int data_c;
+	char data_c[MAX_MSG_LEN];
 	int data_d;
 	int data_e;
 	int data_f;
