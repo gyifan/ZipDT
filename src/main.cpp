@@ -233,6 +233,8 @@ int main(int argc, char** argv){
 
 	//initialize timer
 	reset_timer();
+	
+	gettimeofday(&timD,NULL);
 
 	//BEGIN THE GAME LOOP
 	while(!game_over){
@@ -254,20 +256,20 @@ int main(int argc, char** argv){
 			if(TESTING_MODE){
 				if(input_char == INPUT_RIGHT){
 					gettimeofday(&timB,NULL);
-					timersub(&timB, &timA, &timC);
+					timersub(&timB, &timD, &timC);
 					temp = timC.tv_usec + timC.tv_sec * 1000000;
 					printf("Right Input[us] %d\n", temp);
 				}
 				if(input_char == INPUT_LEFT){
 					gettimeofday(&timB,NULL);
-					timersub(&timB, &timA, &timC);
+					timersub(&timB, &timD, &timC);
 					temp = timC.tv_usec + timC.tv_sec * 1000000;
 					printf("Left Input[us] %d\n", temp);
 				}
 				if(input_char == INPUT_SPIN_CW){
 					gettimeofday(&timB,NULL);
-					timersub(&timB, &timA, &timC);
-					temp = timE.tv_usec + timE.tv_sec * 1000000;
+					timersub(&timB, &timD, &timC);
+					temp = timC.tv_usec + timC.tv_sec * 1000000;
 					printf("Left Input[us] %d\n", temp);
 				}
 			}
