@@ -316,7 +316,7 @@ int main(int argc, char** argv){
 		cvReleaseCapture(&capture);
 	}
 
-	if(!DEBUG_MODE){
+	if(!DEBUG_MODE && !TESTING_MODE){
 		nodelay(win, false); //turn getch into blocking call to wait for input
 		endwin();	//end curses mode	
 	}
