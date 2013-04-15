@@ -110,6 +110,10 @@ void usage(char* cmd){
 }
 
 int main(int argc, char** argv){
+	// Create and open the log.txt
+	FILE *fd;
+	fd = fopen("log.txt", "w");
+
 	int calib_frames = 100;
 	int use_accelerators = USE_ACCEL_NONE;
 	int temp;
@@ -245,15 +249,25 @@ int main(int argc, char** argv){
 			gettimeofday(&timA,NULL);
 			input_char = get_input();
 			gettimeofday(&timB,NULL);
-			timersub(&timB, &timA, &timC);
+//			timersub(&timB, &timA, &timC);
+			timersub(&timB, &timD, &timC);
 
+// Start timing for testing.
 			temp = timC.tv_usec + timC.tv_sec * 1000000;
+//			fprintf(fd, "Time starts: %d\n", temp);
+			fflush(fd);
+			if(temp>30000000){
+				fclose(fd);
+				endwin();	//end curses mode	
+				exit(0);
+			}
+
 			stats.data_a = temp;	//total microseconds
 			stats.data_b = 1000000/temp;	//fps
 			stats.data_d = nomdef;
 			if(DEBUG_MODE)
 				printf("Total time[us] %d\n", temp);
-			if(TESTING_MODE){
+			if(DEBUG_MODE){
 				if(input_char == INPUT_RIGHT){
 					gettimeofday(&timB,NULL);
 					timersub(&timB, &timD, &timC);
@@ -279,6 +293,42 @@ int main(int argc, char** argv){
 		//to be called forever
 		if(!DEBUG_MODE && !TESTING_MODE){
 			//Map specific motion to an existing control in the game
+			if(input_char == INPUT_RIGHT){
+				gettimeofday(&timB,NULL);
+				timersub(&timB, &timD, &timC);
+				temp = timC.tv_usec + timC.tv_sec * 1000000;
+				fprintf(fd, "Right:%d\n", temp);
+				fflush(fd);
+				if(temp>30000000){
+					fclose(fd);
+					endwin();	//end curses mode	
+					exit(0);
+				}
+			}
+			if(input_char == INPUT_LEFT){
+				gettimeofday(&timB,NULL);
+				timersub(&timB, &timD, &timC);
+				temp = timC.tv_usec + timC.tv_sec * 1000000;
+				fprintf(fd,"Left:%d\n", temp);
+				fflush(fd);
+				if(temp>30000000){
+					fclose(fd);
+					endwin();	//end curses mode	
+					exit(0);
+				}
+			}
+			if(input_char == INPUT_SPIN_CW){
+				gettimeofday(&timB,NULL);
+				timersub(&timB, &timD, &timC);
+				temp = timC.tv_usec + timC.tv_sec * 1000000;
+				fprintf(fd, "Rotation:%d\n", temp);
+				fflush(fd);
+				if(temp>30000000){
+					fclose(fd);
+					endwin();	//end curses mode	
+					exit(0);
+				}
+			}
 			if(input_char == INPUT_RIGHT){
 				strcpy(stats.data_c, "Right");
 				if(0 == move_right()){
