@@ -53,6 +53,7 @@ IplImage* im_gray = NULL;
 int turncount = 0;
 int rightcount = 0;
 int leftcount = 0;
+int upcount = 0;
 int downcount = 0;
 int delaystart = 0;
 
@@ -154,7 +155,7 @@ int init_accel(int use_accel){
 				return -1;
 			}
 		}
-		
+
 		//open dilation accelerator device file
 		if(use_accel & USE_ACCEL_DILATE){
 			if(-1 == (fd_dilate_accel = open(DILATION_DEV_PATH, O_RDWR | O_SYNC))){
@@ -162,7 +163,7 @@ int init_accel(int use_accel){
 				return -1;
 			}
 		}
-		
+
 		//open /dev/mem
 		printf("Opening /dev/mem\n");
 		if(-1 == (fd_devmem = open("/dev/mem", O_RDWR | O_SYNC))){
@@ -237,7 +238,7 @@ void erode(IplImage* src, IplImage* dst){
 
 		//copy frame to be eroded into src frame buffer
 		memcpy(frame_buffer_1, src->imageData, src->imageSize);
-		
+
 		//start the accelerator
 		if(-1 == ioctl(fd_erode_accel, EROSION_ACCEL_START)){
 			perror("ioctl failed");
@@ -246,7 +247,7 @@ void erode(IplImage* src, IplImage* dst){
 
 		//do a blocking read to wait for accelerator to finish
 		read(fd_erode_accel, &temp, 4);
-	
+
 		//retrieve the eroded image.
 		memcpy(dst->imageData, frame_buffer_2, src->imageSize);
 
@@ -273,7 +274,7 @@ void dilate(IplImage* src, IplImage* dst){
 
 		//copy frame to be dilated into src frame buffer
 		memcpy(frame_buffer_1, src->imageData, src->imageSize);
-		
+
 		//start the accelerator
 		if(-1 == ioctl(fd_dilate_accel, DILATION_ACCEL_START)){
 			perror("ioctl failed");
@@ -282,7 +283,7 @@ void dilate(IplImage* src, IplImage* dst){
 
 		//do a blocking read to wait for accelerator to finish
 		read(fd_dilate_accel, &temp, 4);
-	
+
 		//retrieve the dilated image.
 		memcpy(dst->imageData, frame_buffer_2, src->imageSize);
 
@@ -418,24 +419,19 @@ char get_input(){
 		cvWaitKey(1); //cause high gui to finish pending highgui operations. (allow images to be displayed)
 	}
 
-	//THIS ISN'T GREAT--
-	//Not currently taking into account the number of COM that are currently detected.
-	//THIS MUST BE FIXED
-
 	int com_diff;
-	//verify that the program has a valid last center of mass value
-	if(com_x_last[0] > 0 && com_y_last[0] > 0
-			&& com_x_last[1] > 0 && com_y_last[1] > 0){
-		for(i=0; i < 2; i++){
-			com_diff = com_x_last[i] - com_x[i];
-			if(abs(com_diff) > COM_X_DIFF_THRESHOLD){
-				com_x_delta[i] = com_diff;
-			}else{
-				com_x_delta[i] = 0;
-			}
+	//verify that the program has a valid last center of mass value, then compute COM value
+	//for largest COM
+	if(com_x_last[0] > 0 && com_x[0] > 0)
+		com_x_delta[0] = (com_x_last[0] - com_x[0]);	
+	if(com_y_last[0] > 0 && com_y[0] > 0)
+		com_y_delta[0] = (com_y_last[0] - com_y[0]);
 
-		}
-	}
+	//for next largest COM
+	if(com_x_last[1] > 0 && com_x[1] > 0)
+		com_x_delta[1] = abs(com_x_last[1] - com_x[1]);	
+	if(com_y_last[1] > 0 && com_y[1] > 0)
+		com_y_delta[1] = abs(com_y_last[1] - com_y[1]);
 
 	if(DEBUG_MODE){
 		printf("X_DELTA_COM0 = %d\n", com_x_delta[0]);
@@ -444,61 +440,39 @@ char get_input(){
 		printf("Y_DELTA_COM1 = %d\n", com_y_delta[1]);
 	}
 
-
-/*
-	//control logic starts here			
-	if(abs(sum_x) > X_SUM_THRESHOLD){
-		if(sum_x < 0){
-			if(rightcount == 0){
-				leftcount++;
-			}else{
-				leftcount = 0;
-				rightcount = 0;
-			}
-		}else{
-			if(leftcount == 0){
-				rightcount++;
-			}else{
-				leftcount = 0;
-				rightcount = 0;
-			}
-		}
-	}
-
-	if(leftcount > X_MOTION_THRESHOLD){
-		pieceLeft = true;
-		leftcount = 0;
-	}else if(rightcount > X_MOTION_THRESHOLD){
-		pieceRight = true;
-		rightcount = 0;
-	}
-
-	//if(abs(sum_y) > Y_SUM_THRESHOLD){
-	//	if(sum_y < 0){
-	//		pieceDown = true;
-	//	}else{
-	//
-	//	}
-	//}
-*/
-
 	xComLoc = (double)com_x[0]/(double)capture_info.dim.width;
 	yComLoc = (double)com_y[0]/(double)capture_info.dim.height;
 
 	if((-com_x_delta[0]) > COM_X_DELTA_THRESHOLD){
-			if(rightcount == 0){
-				leftcount++;
-			}else{
-				leftcount = 0;
-				rightcount = 0;
-			}
+		if(rightcount == 0){
+			leftcount++;
+		}else{
+			leftcount = 0;
+			rightcount = 0;
+		}
 	}else if(com_x_delta[0] > COM_X_DELTA_THRESHOLD){
-			if(leftcount == 0){
-				rightcount++;
-			}else{
-				leftcount = 0;
-				rightcount = 0;
-			}
+		if(leftcount == 0){
+			rightcount++;
+		}else{
+			leftcount = 0;
+			rightcount = 0;
+		}
+	}
+
+	if((com_y_delta[0]) > COM_Y_DELTA_THRESHOLD){
+		if(downcount == 0){
+			upcount++;
+		}else{
+			upcount = 0;
+			downcount = 0;
+		}
+	}else if(-com_y_delta[0] > COM_Y_DELTA_THRESHOLD){
+		if(upcount == 0){
+			downcount++;
+		}else{
+			upcount = 0;
+			downcount = 0;
+		}
 	}
 
 	if(leftcount > COM_X_MOTION_THRESHOLD){
@@ -507,6 +481,15 @@ char get_input(){
 		pieceRight = true;
 	}
 
+	/*
+	 *Disabled Y input generation.
+	 *
+	 * Allowing pieces to move down based on this COM calculation is not reliable!
+	 * As user gestures for rotation, the Y COM varies by too much.
+	 *
+	if(downcount > COM_Y_MOTION_THRESHOLD)
+		pieceDown = true;
+	*/
 	if(pieceRight){
 		input_char = INPUT_RIGHT;
 		pieceRight = false;
