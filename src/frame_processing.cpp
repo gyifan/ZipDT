@@ -148,15 +148,15 @@ int init_accel(int use_accel){
 
 		//open erosion accelerator device file
 		if(use_accel & USE_ACCEL_ERODE){
-			if(-1 == (fd_erode_accel = open(ERODE_DEV_PATH, O_RDWR | O_SYNC))){
+			if(-1 == (fd_erode_accel = open(EROSION_DEV_PATH, O_RDWR | O_SYNC))){
 				perror("open failed erode");
 				return -1;
 			}
 		}
 		
 		//open dilation accelerator device file
-		if(use_accel & USE_ACCEL_ERODE){
-			if(-1 == (fd_dilate_accel = open(DILATE_DEV_PATH, O_RDWR | O_SYNC))){
+		if(use_accel & USE_ACCEL_DILATE){
+			if(-1 == (fd_dilate_accel = open(DILATION_DEV_PATH, O_RDWR | O_SYNC))){
 				perror("open failed dilate");
 				return -1;
 			}
@@ -222,13 +222,13 @@ void erode(IplImage* src, IplImage* dst){
 	int temp;
 	if(use_accels & USE_ACCEL_ERODE){
 		//set row and column registers. this could be done in initialization.
-		if(-1 == ioctl(fd_erode_accel, SELECT_REG, ROWS_REG)){
+		if(-1 == ioctl(fd_erode_accel, EROSION_SELECT_REG, EROSION_ROWS_REG)){
 			perror("ioctl failed");
 			return -1;
 		}
 		write(fd_erode_accel, &(capture_info.dim.height), 4);
 
-		if(-1 == ioctl(fd_erode_accel, SELECT_REG, COLS_REG)){
+		if(-1 == ioctl(fd_erode_accel, EROSION_SELECT_REG, EROSION_COLS_REG)){
 			perror("ioctl failed");
 			return -1;
 		}
@@ -238,7 +238,7 @@ void erode(IplImage* src, IplImage* dst){
 		memcpy(frame_buffer_1, src->imageData, src->imageSize);
 		
 		//start the accelerator
-		if(-1 == ioctl(fd_erode_accel, ACCEL_START)){
+		if(-1 == ioctl(fd_erode_accel, EROSION_ACCEL_START)){
 			perror("ioctl failed");
 			return -1;
 		}
@@ -258,23 +258,23 @@ void dilate(IplImage* src, IplImage* dst){
 	int temp;
 	if(use_accels & USE_ACCEL_DILATE){
 		//set row and column registers. this could be done in initialization.
-		if(-1 == ioctl(fd_dilate_accel, SELECT_REG, ROWS_REG)){
+		if(-1 == ioctl(fd_dilate_accel, DILATION_SELECT_REG, DILATION_ROWS_REG)){
 			perror("ioctl failed");
 			return -1;
 		}
 		write(fd_dilate_accel, &(capture_info.dim.height), 4);
 
-		if(-1 == ioctl(fd_dilate_accel, SELECT_REG, COLS_REG)){
+		if(-1 == ioctl(fd_dilate_accel, DILATION_SELECT_REG, DILATION_COLS_REG)){
 			perror("ioctl failed");
 			return -1;
 		}
 		write(fd_dilate_accel, &(capture_info.dim.width), 4);
 
-		//copy frame to be eroded into src frame buffer
+		//copy frame to be dilated into src frame buffer
 		memcpy(frame_buffer_1, src->imageData, src->imageSize);
 		
 		//start the accelerator
-		if(-1 == ioctl(fd_dilate_accel, ACCEL_START)){
+		if(-1 == ioctl(fd_dilate_accel, DILATION_ACCEL_START)){
 			perror("ioctl failed");
 			return -1;
 		}
@@ -282,7 +282,7 @@ void dilate(IplImage* src, IplImage* dst){
 		//do a blocking read to wait for accelerator to finish
 		read(fd_dilate_accel, &temp, 4);
 	
-		//retrieve the eroded image.
+		//retrieve the dilated image.
 		memcpy(dst->imageData, frame_buffer_2, src->imageSize);
 
 	}else{
