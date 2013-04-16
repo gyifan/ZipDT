@@ -12,7 +12,8 @@ extern int board[BOARD_HEIGHT][BOARD_WIDTH];
 extern struct game_stats stats;
 extern int game_over;		//1=game ended. 0=still playing.
 extern int board_changed;		//1= board changed, 0=board is same. redraw board if it changed, else do nothing.
-extern double comLoc;
+extern double xComLoc;
+extern double yComLoc;
 extern struct current_piece piece;	//piece that user is controlling
 extern struct timeval last_time;
 extern struct timeval current_time;
@@ -504,10 +505,31 @@ void print_board_curses(){
 		mvprintw(y+14,x,stats.msg_f);
 		mvprintw(y+15,x,"%d",stats.data_f);
 	}
-	//magic numbers are used for centering locator
-	mvprintw(y+22,(BOARD_WIDTH-comLoc*BOARD_WIDTH)+6,"%d",stats.data_f);
-	mvprintw(y+22,5,"%c","1");
-	mvprintw(y+22,16,"%c","1");
+	
+	//Print the center of mass indicator below the playing board
+	//frame the indicator in a square
+	//draw left edge
+	for(y = BOARD_HEIGHT + BOARD_Y_OFFSET; y < BOARD_HEIGHT + BOARD_Y_OFFSET + BOARD_WIDTH + 2; y++){
+		mvprintw(y, BOARD_X_OFFSET - 1, "]");
+	}
+	//draw right edge
+	for(y = BOARD_HEIGHT + BOARD_Y_OFFSET; y < BOARD_HEIGHT + BOARD_Y_OFFSET + BOARD_WIDTH + 2; y++){
+		mvprintw(y, 2*(BOARD_WIDTH) + BOARD_X_OFFSET, "[");
+	}
+	//draw top edge
+	for(x = BOARD_X_OFFSET; x < 2*(BOARD_WIDTH + 1); x++){
+		mvprintw(BOARD_HEIGHT + BOARD_Y_OFFSET, x, "v");
+	}
+	//draw bottom edge
+	for(x = BOARD_X_OFFSET; x < 2*(BOARD_WIDTH + 1); x++){
+		mvprintw(BOARD_HEIGHT + BOARD_Y_OFFSET + BOARD_WIDTH + 1, x, "^");
+	}
+
+	mvprintw(BOARD_HEIGHT + BOARD_Y_OFFSET + BOARD_WIDTH + 2, 0, "Tracked object center of mass.");
+	
+	//draw the indicator within the square frame
+	mvprintw(BOARD_HEIGHT + BOARD_Y_OFFSET + yComLoc*BOARD_WIDTH + 1,
+			2*(BOARD_WIDTH - xComLoc*BOARD_WIDTH) + BOARD_X_OFFSET, "0");
 
 
 	refresh();

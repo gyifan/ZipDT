@@ -36,7 +36,8 @@ extern int USE_V4L_CAPTURE;
 extern struct capture_data capture_info;
 
 int use_accels;
-double comLoc= 0.0;
+double xComLoc= 0.0;
+double yComLoc= 0.0;
 
 IplImage* rawImage = NULL;
 IplImage* grayImage = NULL;
@@ -481,7 +482,8 @@ char get_input(){
 	//}
 */
 
-	comLoc = (double)com_x[0]/(double)capture_info.dim.width;
+	xComLoc = (double)com_x[0]/(double)capture_info.dim.width;
+	yComLoc = (double)com_y[0]/(double)capture_info.dim.height;
 
 	if((-com_x_delta[0]) > COM_X_DELTA_THRESHOLD){
 			if(rightcount == 0){
