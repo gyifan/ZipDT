@@ -23,8 +23,8 @@
 #include "opencv/cxmisc.h"
 
 #include "main.h"
-#include "contour_area.h"
 #include "erosion.h"
+#include "dilation.h"
 #include "game_behavior.h"
 #include "frame_grabber.h"
 #include "accelerators.h"
@@ -122,8 +122,8 @@ struct timeval timevalC;
 
 //accelerator variables
 int fd_devmem;
-int fd_area_accel;
 int fd_erode_accel;
+int fd_dilate_accel;
 void* frame_buffer_1;
 void* frame_buffer_2;
 
@@ -146,18 +146,18 @@ int init_accel(int use_accel){
 	use_accels = use_accel;
 	if(use_accel != USE_ACCEL_NONE){
 
-		//open contour area accelerator device file
-		if(use_accel & USE_ACCEL_AREA){
-			if(-1 == (fd_area_accel = open(AREA_DEV_PATH, O_RDWR | O_SYNC))){
-				perror("open failed");
-				return -1;
-			}
-		}
-
 		//open erosion accelerator device file
 		if(use_accel & USE_ACCEL_ERODE){
 			if(-1 == (fd_erode_accel = open(ERODE_DEV_PATH, O_RDWR | O_SYNC))){
-				perror("open failed");
+				perror("open failed erode");
+				return -1;
+			}
+		}
+		
+		//open dilation accelerator device file
+		if(use_accel & USE_ACCEL_ERODE){
+			if(-1 == (fd_dilate_accel = open(DILATE_DEV_PATH, O_RDWR | O_SYNC))){
+				perror("open failed dilate");
 				return -1;
 			}
 		}
@@ -205,48 +205,6 @@ void init_frame_processing(int calib_frames){
 	//allocateOnDemand(&im_gray, cvGetSize(rawImage), IPL_DEPTH_8U, 1);
 	allocateOnDemand(&im_gray, capture_info.dim, IPL_DEPTH_8U, 1);
 
-	/*
-	//create background model
-	cvSet(ImaskCodeBook,cvScalar(255));
-
-	model = cvCreateBGCodeBookModel();
-	//Set color thresholds to default values
-	model->modMin[0] = 3;
-	model->modMin[1] = model->modMin[2] = 3;
-	model->modMax[0] = 10;
-	model->modMax[1] = model->modMax[2] = 10;
-	model->cbBounds[0] = model->cbBounds[1] = model->cbBounds[2] = 10;
-
-	for(nframes = 0; nframes <= nframesToLearnBG; nframes++){
-	if(!DEBUG_MODE){
-	mvprintw(0,0, "Creating background model. Move a little to create a more stable BG model.");
-	mvprintw(1,0, "%d frames to go.", nframesToLearnBG - nframes);
-	refresh();
-	}else{
-	printf("generating BG model, %d frames to go.\n", nframesToLearnBG - nframes);
-	}
-
-	if(!USE_V4L_CAPTURE){
-	rawImage = cvQueryFrame(capture);
-	}else{
-#ifndef USE_MULTI_THREAD_CAPTURE
-capture_frame((void*)NULL); //if not multi-threaded must capture an image b4 query
-#endif
-rawImage = v4lQueryFrame();
-}
-
-if(!USE_V4L_CAPTURE)
-cvCvtColor(rawImage, yuvImage, CV_BGR2YCrCb);//YUV For codebook method
-else
-cvCvtColor(rawImage, yuvImage, CV_RGB2YCrCb);//YUV For codebook method. V4L query returns RGB format
-
-if(nframes < nframesToLearnBG){
-cvBGCodeBookUpdate(model, yuvImage);
-}else if(nframes == nframesToLearnBG)
-cvBGCodeBookClearStale(model, model->t/2);
-}
-cvCopy(ImaskCodeBook,ImaskCodeBookCC);	
-*/
 	if(DRAWING_ON){
 		cvNamedWindow("Detected Skin", CV_WINDOW_AUTOSIZE);
 		cvMoveWindow("Detected Skin",479,0);
@@ -255,20 +213,83 @@ cvCopy(ImaskCodeBook,ImaskCodeBookCC);
 	}
 }
 
-//dirty function for debugging hardware accelerators. REMOVE THIS IN FINAL VERSION
-void store_image_data_to_file(IplImage *img, const char *filename){
-	int output_fd;
-	output_fd = open(filename, O_CREAT | O_TRUNC | O_WRONLY);
-
-	printf("store_image_data_to_file wrote %d bytes to %s\n", write(output_fd, img->imageData, img->imageSize), filename);
-
-	close(output_fd);
-}
-
 
 IplImage* hsv_image = NULL;
 CvScalar  hsv_min = cvScalar(0, 30, 80, 0);
 CvScalar  hsv_max = cvScalar(20, 150, 255, 0);
+
+void erode(IplImage* src, IplImage* dst){
+	int temp;
+	if(use_accels & USE_ACCEL_ERODE){
+		//set row and column registers. this could be done in initialization.
+		if(-1 == ioctl(fd_erode_accel, SELECT_REG, ROWS_REG)){
+			perror("ioctl failed");
+			return -1;
+		}
+		write(fd_erode_accel, &(capture_info.dim.height), 4);
+
+		if(-1 == ioctl(fd_erode_accel, SELECT_REG, COLS_REG)){
+			perror("ioctl failed");
+			return -1;
+		}
+		write(fd_erode_accel, &(capture_info.dim.width), 4);
+
+		//copy frame to be eroded into src frame buffer
+		memcpy(frame_buffer_1, src->imageData, src->imageSize);
+		
+		//start the accelerator
+		if(-1 == ioctl(fd_erode_accel, ACCEL_START)){
+			perror("ioctl failed");
+			return -1;
+		}
+
+		//do a blocking read to wait for accelerator to finish
+		read(fd_erode_accel, &temp, 4);
+	
+		//retrieve the eroded image.
+		memcpy(dst->imageData, frame_buffer_2, src->imageSize);
+
+	}else{
+		cvErode(src, dst, NULL, 1);
+	}
+}
+
+void dilate(IplImage* src, IplImage* dst){
+	int temp;
+	if(use_accels & USE_ACCEL_DILATE){
+		//set row and column registers. this could be done in initialization.
+		if(-1 == ioctl(fd_dilate_accel, SELECT_REG, ROWS_REG)){
+			perror("ioctl failed");
+			return -1;
+		}
+		write(fd_dilate_accel, &(capture_info.dim.height), 4);
+
+		if(-1 == ioctl(fd_dilate_accel, SELECT_REG, COLS_REG)){
+			perror("ioctl failed");
+			return -1;
+		}
+		write(fd_dilate_accel, &(capture_info.dim.width), 4);
+
+		//copy frame to be eroded into src frame buffer
+		memcpy(frame_buffer_1, src->imageData, src->imageSize);
+		
+		//start the accelerator
+		if(-1 == ioctl(fd_dilate_accel, ACCEL_START)){
+			perror("ioctl failed");
+			return -1;
+		}
+
+		//do a blocking read to wait for accelerator to finish
+		read(fd_dilate_accel, &temp, 4);
+	
+		//retrieve the eroded image.
+		memcpy(dst->imageData, frame_buffer_2, src->imageSize);
+
+	}else{
+		cvDilate(src, dst, NULL, 1);
+	}
+}
+
 
 char get_input(){
 	int sum_x = 0;
@@ -326,45 +347,12 @@ char get_input(){
 	}
 
 
-//	store_image_data_to_file(skinImage, "./skin_before_erode.dat");
-
+	//use the morphological 'open' operation to remove small foreground noise.
 	if(DEBUG_MODE){
 		gettimeofday(&timevalA, NULL);
 	}
 
-	//use the morphological 'open' operation to remove small foreground noise.
-	if(use_accels & USE_ACCEL_ERODE){
-		//set row and column registers. this could be done in initialization.
-		if(-1 == ioctl(fd_erode_accel, SELECT_REG, ROWS_REG)){
-			perror("ioctl failed");
-			return -1;
-		}
-		write(fd_erode_accel, &(capture_info.dim.height), 4);
-
-		if(-1 == ioctl(fd_erode_accel, SELECT_REG, COLS_REG)){
-			perror("ioctl failed");
-			return -1;
-		}
-		write(fd_erode_accel, &(capture_info.dim.width), 4);
-
-		//copy frame to be eroded into src frame buffer
-		memcpy(frame_buffer_1, skinImage->imageData, skinImage->imageSize);
-		
-		//start the accelerator
-		if(-1 == ioctl(fd_erode_accel, ACCEL_START)){
-			perror("ioctl failed");
-			return -1;
-		}
-
-		//do a blocking read to wait for accelerator to finish
-		read(fd_erode_accel, &temp, 4);
-	
-		//retrieve the eroded image.
-		memcpy(skinImage->imageData, frame_buffer_2, skinImage->imageSize);
-
-	}else{
-		cvErode(skinImage, skinImage, NULL, 1);
-	}
+	erode(skinImage, skinImage);
 
 	if(DEBUG_MODE){
 		gettimeofday(&timevalB, NULL);
@@ -372,17 +360,21 @@ char get_input(){
 		printf("erode frame time[us] = %d\n", timevalC.tv_sec * 1000000 + timevalC.tv_usec);
 	}
 
-//	store_image_data_to_file(skinImage, "./skin_after_erode.dat");
+	if(DEBUG_MODE){
+		gettimeofday(&timevalA, NULL);
+	}
 
-//	exit(-1);
+	dilate(skinImage, skinImage);
 
-
-	cvDilate(skinImage, skinImage, NULL, 1);
+	if(DEBUG_MODE){
+		gettimeofday(&timevalB, NULL);
+		timersub(&timevalB, &timevalA, &timevalC);
+		printf("dilate frame time[us] = %d\n", timevalC.tv_sec * 1000000 + timevalC.tv_usec);
+	}
 
 	//use the morphological 'close' operation to remove small background noise.
-	//cvDilate(skinImage, skinImage, NULL, 1);
-	//cvErode(skinImage, skinImage, NULL, 1);
-
+	dilate(skinImage, skinImage);
+	erode(skinImage, skinImage);
 
 	//reset the contour frame image.
 	memset(contour_frame->imageData, 0, contour_frame->imageSize);
@@ -392,15 +384,8 @@ char get_input(){
 		gettimeofday(&timevalA, NULL);
 	}
 
-	if(use_accels & USE_ACCEL_AREA){
-		if(detect(tmp_skinImage, contour_frame, 1)){
-			printf("detect failed\n");
-		}		
-	}else{
-		if(detect(tmp_skinImage, contour_frame, 0)){
-			printf("detect failed\n");
-		}
-	}
+	//not using HW accelerated contour area detection.
+	detect(tmp_skinImage, contour_frame);
 
 	if(DEBUG_MODE){
 		gettimeofday(&timevalB, NULL);
@@ -539,7 +524,7 @@ char get_input(){
 	return input_char;
 }
 //Function for detecting the number of contour defects in an image
-int detect(IplImage* img_8uc1,IplImage* img_8uc3, int use_accel) {
+int detect(IplImage* img_8uc1,IplImage* img_8uc3) {
 	CvMemStorage* storage = cvCreateMemStorage();
 	CvMemStorage* poly_storage[2];
 	CvMemStorage* defect_storage[2];
@@ -570,37 +555,7 @@ int detect(IplImage* img_8uc1,IplImage* img_8uc3, int use_accel) {
 				sizeof(CvPoint), storage1);
 
 		for(CvSeq* c=first_contour; c!=NULL; c=c->h_next){
-			if(use_accel){
-				//select the total elements register register
-				//This must be loaded with the number of elements in the contour.
-				if(-1 == ioctl(fd_area_accel, SELECT_REG, ELEM_COUNT_REG)){
-					perror("ioctl failed");
-					return -1;
-				}
-
-				//write number of elements to register
-				write(fd_area_accel, &(c->total), 4);
-				copy_size = c->elem_size * c->first->count;
-
-				//copy point sequence into first buffer
-				memcpy(frame_buffer_1, c->first->data, copy_size);
-
-				//start the accelerator
-				if(-1 == ioctl(fd_area_accel, ACCEL_START)){
-					perror("ioctl failed");
-					return -1;
-				}
-
-				//select the upper word of the return register
-				if(-1 == ioctl(fd_area_accel, SELECT_REG, RETURN_REG)){
-					perror("ioctl failed");
-					return -1;
-				}
-				read(fd_area_accel, &value, 4);
-				area = (double)(-value);
-			}else{
-				area=cvContourArea(c,CV_WHOLE_SEQ);
-			}
+			area=cvContourArea(c,CV_WHOLE_SEQ);
 
 			//store information about largest 2 contours (face and hand?)
 			//index 0 holds largest area, 1 holds next largest
@@ -711,131 +666,6 @@ int detect(IplImage* img_8uc1,IplImage* img_8uc3, int use_accel) {
 	}
 
 	cvReleaseMemStorage(&storage);
-	return 0;
-}
-
-//Function for detecting the number of contour defects in an image
-int detect_old(IplImage* img_8uc1,IplImage* img_8uc3, int use_accel) {
-	CvMemStorage* storage = cvCreateMemStorage();
-	CvSeq* first_contour = NULL;
-	CvSeq* maxitem = NULL;
-	double area = 0;
-	double areamax = 0;
-	int maxn=0;
-	int value;
-	int Nc = cvFindContours(img_8uc1,storage,&first_contour,sizeof(CvContour),CV_RETR_LIST);
-	int n=0;
-	int copy_size;
-
-	if(Nc>0){
-		for(CvSeq* c=first_contour; c!=NULL; c=c->h_next){
-			if(use_accel){
-				//select the total elements register register
-				//This must be loaded with the number of elements in the contour.
-				if(-1 == ioctl(fd_area_accel, SELECT_REG, ELEM_COUNT_REG)){
-					perror("ioctl failed");
-					return -1;
-				}
-
-				//write number of elements to register
-				write(fd_area_accel, &(c->total), 4);
-				copy_size = c->elem_size * c->first->count;
-
-				//copy point sequence into first buffer
-				memcpy(frame_buffer_1, c->first->data, copy_size);
-
-				//start the accelerator
-				if(-1 == ioctl(fd_area_accel, ACCEL_START)){
-					perror("ioctl failed");
-					return -1;
-				}
-
-				//select the upper word of the return register
-				if(-1 == ioctl(fd_area_accel, SELECT_REG, RETURN_REG)){
-					perror("ioctl failed");
-					return -1;
-				}
-				read(fd_area_accel, &value, 4);
-				area = (double)(-value);
-			}else{
-				area=cvContourArea(c,CV_WHOLE_SEQ );
-			}
-
-			if(area>areamax){
-				areamax=area;
-				maxitem=c;
-				maxn=n;
-			}
-			n++;
-		}
-		CvMemStorage* storage3 = cvCreateMemStorage(0);
-
-		if(areamax>5000){
-			maxitem = cvApproxPoly(maxitem, sizeof(CvContour), storage3, CV_POLY_APPROX_DP, 10, 1);
-			CvPoint pt0;
-
-			CvMemStorage* storage1 = cvCreateMemStorage(0);
-			CvMemStorage* storage2 = cvCreateMemStorage(0);
-			CvSeq* ptseq = cvCreateSeq(CV_SEQ_KIND_GENERIC|CV_32SC2, sizeof(CvContour),
-					sizeof(CvPoint), storage1);
-			CvSeq* hull;
-			CvSeq* defects;
-
-			for(int i = 0; i < maxitem->total; i++){
-				CvPoint* p = CV_GET_SEQ_ELEM(CvPoint, maxitem, i);
-				pt0.x = p->x;
-				pt0.y = p->y;
-				cvSeqPush(ptseq, &pt0);
-			}
-			hull = cvConvexHull2(ptseq, 0, CV_CLOCKWISE, 0);
-			int hullcount = hull->total;
-
-			//Determine the total number of defects
-
-			defects= cvConvexityDefects(ptseq,hull,storage2);
-
-			CvConvexityDefect* defectArray;  
-
-			int j=0;  
-			for(;defects;defects = defects->h_next){  
-				nomdef = defects->total; //total number of detected defects
-
-				if(nomdef == 0)  
-					continue;  
-
-				// Alloc memory for array of defects    
-				defectArray = (CvConvexityDefect*)malloc(sizeof(CvConvexityDefect)*nomdef);  
-
-				// Get defect set.  
-				cvCvtSeqToArray(defects,defectArray, CV_WHOLE_SEQ);  
-
-				// Draw marks for all the defects in the image.  
-				if(DRAWING_ON){
-					for(int i=0; i<nomdef; i++){   
-						cvLine(img_8uc3, *(defectArray[i].start), *(defectArray[i].depth_point),CV_RGB(0,0,164),1, CV_AA, 0);  
-						cvCircle(img_8uc3, *(defectArray[i].depth_point), 5, CV_RGB(164,0,0), 2, 8,0);  
-						cvCircle(img_8uc3, *(defectArray[i].start), 5, CV_RGB(164,0,0), 2, 8,0);  
-						cvLine(img_8uc3, *(defectArray[i].depth_point), *(defectArray[i].end),CV_RGB(0,0,164),1, CV_AA, 0);  
-					} 
-
-					char txt[]="0";
-					txt[0]='0'+nomdef-1;
-					CvFont font;
-					cvInitFont(&font, CV_FONT_HERSHEY_DUPLEX, 1.0, 1.0, 0, 1, CV_AA);
-					cvPutText(img_8uc3, txt, cvPoint(50, 50), &font, cvScalar(0, 0, 128, 0)); 
-				}
-				j++;  
-
-				// Free memory.         
-				free(defectArray);  
-			} 
-
-			cvReleaseMemStorage( &storage );
-			cvReleaseMemStorage( &storage1 );
-			cvReleaseMemStorage( &storage2 );
-			cvReleaseMemStorage( &storage3 );
-		}
-	}
 	return 0;
 }
 

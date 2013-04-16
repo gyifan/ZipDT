@@ -21,7 +21,6 @@
 #include "opencv/cxmisc.h"
 
 #include "main.h"
-#include "contour_area.h"
 #include "game_behavior.h"
 #include "frame_grabber.h"
 #include "frame_processing.h"
@@ -85,8 +84,8 @@ void usage(char* cmd){
 	printf("<HARDWARE ACCELERATORS>\n");
 	printf("If no accelerator parameter is passed, no accelerators are utilized.\n");
 	printf("\t-a\tuse all hardware accelerators\n");
-	printf("\t-c\tuse cvFindContourArea hardware accelerator\n");
 	printf("\t-e\tuse cvErode hardware accelerator\n");
+	printf("\t-d\tuse cvDilate hardware accelerator\n");
 	printf("\n<CAPTURE RESOLUTION>\n");
 	printf("If no resolution parameter is passed, the program defaults to 640x480 frame captures.\n");
 	printf("\t-r <RESOLUTION>\n");
@@ -131,11 +130,11 @@ int main(int argc, char** argv){
 			case ACCEL_SET_ALL:
 				use_accelerators |= USE_ACCEL_ALL;
 				break;
-			case ACCEL_SET_AREA:
-				use_accelerators |= USE_ACCEL_AREA;
-				break;
 			case ACCEL_SET_ERODE:
 				use_accelerators |= USE_ACCEL_ERODE;
+				break;
+			case ACCEL_SET_DILATE:
+				use_accelerators |= USE_ACCEL_DILATE;
 				break;
 
 			case CAPTURE_RESOLUTION:

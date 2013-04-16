@@ -20,7 +20,7 @@
 int init_accel(int use_accel);
 void init_frame_processing(int calib_frames);
 void allocateOnDemand(IplImage **img, CvSize size, int depth, int channels);
-int detect(IplImage* img_8uc1,IplImage* img_8uc3, int use_accel);
+int detect(IplImage* img_8uc1,IplImage* img_8uc3);
 char get_input();
 
 #endif
